@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from src.config.settings import Settings
+
 from src.api.v1 import router as api_v1_router
+from src.config.settings import Settings
 
 settings = Settings()
 app = FastAPI(
@@ -24,11 +25,14 @@ app.add_middleware(
 # Include API v1 router
 app.include_router(api_v1_router)
 
+
 @app.get("/")
 async def root():
     """Root endpoint returning API status."""
     return {"status": "online", "version": app.version}
 
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("src.main:app", host="0.0.0.0", port=8000, reload=True) 
+
+    uvicorn.run("src.main:app", host="127.0.0.1", port=8000, reload=True)

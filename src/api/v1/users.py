@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends
+
 from src.utils.auth import get_current_user
 
 router = APIRouter(prefix="/users", tags=["users"])
+
 
 @router.get("/me")
 async def get_current_user_info(user: dict = Depends(get_current_user)):
@@ -11,5 +13,5 @@ async def get_current_user_info(user: dict = Depends(get_current_user)):
         "email": user.get("email"),
         "role": user.get("role", "user"),
         "aud": user.get("aud"),
-        "exp": user.get("exp")
-    } 
+        "exp": user.get("exp"),
+    }

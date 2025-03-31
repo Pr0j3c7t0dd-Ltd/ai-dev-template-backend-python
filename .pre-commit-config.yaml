@@ -38,3 +38,8 @@ repos:
           - tree-sitter-javascript
           - tree-sitter-c-sharp
           - setuptools
+          - fastapi
+          - httpx
+          - pydantic
+          - pydantic-settings
+          - python-jose[cryptography]

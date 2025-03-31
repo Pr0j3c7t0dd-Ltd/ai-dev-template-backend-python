@@ -28,7 +28,7 @@ pip install -r requirements.txt
 For local development, also install development dependencies and set up pre-commit hooks:
 ```bash
 pip install -r requirements-dev.txt
-pre-commit install
+pre-commit install  # Sets up git hooks for automatic code quality checks
 ```
 
 3. Create a `.env` file in the root directory:
