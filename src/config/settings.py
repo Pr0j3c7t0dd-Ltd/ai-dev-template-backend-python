@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Modern FastAPI Server"
 
     # CORS Settings
-    CORS_ORIGINS: list[AnyHttpUrl] = ["http://localhost:3000"]  # Frontend URL
+    CORS_ORIGINS: list[str | AnyHttpUrl] = ["http://localhost:3000"]  # Frontend URL
 
     # Environment Settings
     ENVIRONMENT: str = "development"

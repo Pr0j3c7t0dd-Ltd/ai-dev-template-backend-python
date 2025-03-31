@@ -3,6 +3,15 @@ import os
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+# Load environment variables from .env.local if it exists
+env_path = Path(".env.local")
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+else:
+    load_dotenv()  # Fallback to .env
+
 
 def setup_logger(name: str = "app") -> logging.Logger:
     """

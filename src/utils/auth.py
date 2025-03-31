@@ -6,6 +6,7 @@ from jose import JWTError, jwt
 
 from src.config.settings import Settings
 from src.repositories.user_settings import UserSettingsRepository
+from src.utils.logger import logger
 
 settings = Settings()
 
@@ -15,18 +16,33 @@ class JWTBearer(HTTPBearer):
         super().__init__(auto_error=auto_error)
 
     async def __call__(self, request: Request) -> Optional[str]:
-        credentials: HTTPAuthorizationCredentials = await super().__call__(request)
-        if credentials:
-            if not credentials.scheme == "Bearer":
-                raise HTTPException(
-                    status_code=403, detail="Invalid authentication scheme."
-                )
-            if not self.verify_jwt(credentials.credentials):
-                raise HTTPException(
-                    status_code=403, detail="Invalid token or expired token."
-                )
-            return credentials.credentials
-        raise HTTPException(status_code=403, detail="Invalid authorization code.")
+        logger.debug(
+            f"JWTBearer processing request to {request.url.path} [{request.method}]"
+        )
+        try:
+            credentials: HTTPAuthorizationCredentials = await super().__call__(request)
+            if credentials:
+                if credentials.scheme != "Bearer":
+                    logger.warning(
+                        f"Invalid authentication scheme: {credentials.scheme}"
+                    )
+                    raise HTTPException(
+                        status_code=403, detail="Invalid authentication scheme."
+                    )
+                if not self.verify_jwt(credentials.credentials):
+                    logger.warning("Invalid token or expired token")
+                    raise HTTPException(
+                        status_code=403, detail="Invalid token or expired token."
+                    )
+                return credentials.credentials
+            logger.warning("Invalid authorization code")
+            raise HTTPException(status_code=403, detail="Invalid authorization code.")
+        except HTTPException as e:
+            logger.debug(f"Authentication error: {e.status_code} - {e.detail}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error in JWTBearer: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Internal server error") from e
 
     def verify_jwt(self, token: str) -> bool:
         try:
@@ -68,3 +84,22 @@ async def get_current_user(token: str = Depends(JWTBearer())) -> dict:
             print(f"Error ensuring user settings: {str(e)}")
 
     return payload
+
+
+async def conditional_auth(request: Request):
+    """Skip authentication for OPTIONS requests to handle CORS preflight properly."""
+    if request.method == "OPTIONS":
+        logger.debug("Skipping authentication for OPTIONS request")
+        return None  # Return None instead of empty dict for OPTIONS
+
+    # For non-OPTIONS requests, use the regular JWT authentication
+    try:
+        jwt_bearer = JWTBearer()
+        token = await jwt_bearer(request)
+        return await get_current_user(token)
+    except HTTPException as e:
+        logger.warning(f"Authentication failed: {e.detail}")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in conditional_auth: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error") from e
