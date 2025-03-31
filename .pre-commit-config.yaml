@@ -21,8 +21,9 @@ repos:
       - id: pytest
         name: pytest
         entry: pytest
-        language: system
+        language: python
         pass_filenames: false
         always_run: true
         types: [python]
         verbose: true
+        additional_dependencies: [.]
