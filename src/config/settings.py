@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Literal
 from pydantic_settings import BaseSettings
 from pydantic import AnyHttpUrl
 
@@ -14,6 +14,16 @@ class Settings(BaseSettings):
     
     # Environment Settings
     ENVIRONMENT: str = "development"
+    
+    # Logging Settings
+    LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    LOG_TO_FILE: bool = False
+    LOG_FILE_PATH: str = "logs/app.log"
+    
+    # Supabase Settings
+    SUPABASE_URL: str
+    SUPABASE_KEY: str
+    SUPABASE_JWT_SECRET: str
     
     class Config:
         case_sensitive = True

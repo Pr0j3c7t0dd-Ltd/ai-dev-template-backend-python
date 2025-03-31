@@ -1,5 +1,7 @@
 #!/bin/bash
 
+clear
+
 # Exit on error
 set -e
 

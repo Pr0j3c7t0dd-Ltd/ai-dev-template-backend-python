@@ -1,5 +1,22 @@
-from fastapi import APIRouter
-from src.api.v1.health import router as health_router
+from fastapi import APIRouter, Depends
+from src.config.settings import Settings
+from src.utils.auth import JWTBearer
+from . import health
+from . import users
 
-router = APIRouter(prefix="/api/v1")
-router.include_router(health_router) 
+settings = Settings()
+
+# Create the main router
+router = APIRouter(prefix=settings.API_V1_STR)
+
+# Add global JWT authentication to all routes except /health
+router.include_router(
+    health.router,
+    dependencies=[]  # No authentication for health check
+)
+
+# Add protected routes
+router.include_router(
+    users.router,
+    dependencies=[Depends(JWTBearer())]  # Protected by JWT
+) 
