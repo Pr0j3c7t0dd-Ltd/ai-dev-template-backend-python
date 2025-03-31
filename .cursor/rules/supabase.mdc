@@ -1,0 +1,31 @@
+---
+description: Any database operations, including migrations, crating and updating tables, adding fields, etc.
+globs: 
+alwaysApply: false
+---
+# Database
+
+- Use supabase for database queries and schema
+- Before performing any database related tasks, make sure to read the database.types.ts first for existing database schema
+- Always use migrations to update the database schema, create them using the command `npx supabase migration new <migration-name>`
+- Afer creating a migration file, run `npx supabase migration up` to apply the migration and run `npx supabase gen types typescript --local > src/types/database.types.ts` to generate the type file
+- When creating a new table, it must have columns for `created_at` and `updated_at` and the values should be set automatically via triggers using `public.handle_created_at()` and `public.handle_updated_at()`
+- Always enable Row Level Security (RLS) on newly create tables via `ALTER TABLE <table_name> ENABLE ROW LEVEL SECURITY;` in migration files and add reasonable policies
+- Always use `await createServerClient()` in the `@/utils/supabase/server` to create supabase client in server components and `createBrowserClient()` in the `@/utils/supabase/client` to create supabase client in client components
+- Always maintain backwards compatibility when generating migrations
+
+## Useful supabase commands
+
+supabase start
+
+supabase migration create <migration_name>
+
+supabase migration up
+
+supabase db diff -f <migration_name>
+
+supabase db reset
+
+supabase db dump --data-only --local -f seed.sql
+
+supabase db push
