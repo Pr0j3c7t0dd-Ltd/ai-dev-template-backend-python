@@ -20,10 +20,9 @@ repos:
     hooks:
       - id: pytest
         name: pytest
-        entry: pytest
-        language: python
+        entry: .venv/bin/pytest
+        language: script
         pass_filenames: false
         always_run: true
         types: [python]
         verbose: true
-        additional_dependencies: [.]
