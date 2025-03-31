@@ -5,6 +5,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 
 from src.config.settings import Settings
+from src.repositories.user_settings import UserSettingsRepository
 
 settings = Settings()
 
@@ -50,8 +51,20 @@ def decode_jwt(token: str) -> Optional[dict]:
         return None
 
 
-def get_current_user(token: str = Depends(JWTBearer())) -> dict:
+async def get_current_user(token: str = Depends(JWTBearer())) -> dict:
     payload = decode_jwt(token)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+    # Ensure user settings exist
+    user_id = payload.get("sub")
+    if user_id:
+        user_settings_repo = UserSettingsRepository()
+        try:
+            # Ensure user settings exist - this calls our database function
+            await user_settings_repo.ensure_user_settings(user_id)
+        except Exception as e:
+            # Log the error but don't block the request
+            print(f"Error ensuring user settings: {str(e)}")
+
     return payload

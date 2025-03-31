@@ -59,6 +59,8 @@ These tools are configured in `requirements-dev.txt` and will be installed when 
 
 ## Supabase Setup
 
+### Cloud-hosted Supabase
+
 1. Create a Supabase Project:
    - Go to [Supabase](https://app.supabase.com)
    - Create a new project
@@ -74,6 +76,55 @@ These tools are configured in `requirements-dev.txt` and will be installed when 
    - Update your `.env` file with these values
    - Never commit the `.env` file to version control
 
+### Local Supabase with Docker (Recommended for Development)
+
+For local development, you can run Supabase locally using Docker:
+
+1. Prerequisites:
+   - [Docker](https://docs.docker.com/get-docker/) installed and running
+   - [Supabase CLI](https://supabase.com/docs/guides/cli) (will be installed by our setup script)
+
+2. Setup Local Supabase:
+   ```bash
+   # Make scripts executable
+   chmod +x scripts/*.sh
+
+   # Setup and start local Supabase
+   ./scripts/setup_local_supabase.sh
+   ```
+
+   This script will:
+   - Install Supabase CLI if not already installed
+   - Initialize a local Supabase project
+   - Start the local Supabase instance
+   - Create a `.env.local` file with the correct configuration
+
+3. Managing Local Supabase:
+   ```bash
+   # Show available commands
+   ./scripts/manage_local_supabase.sh
+
+   # Start Supabase
+   ./scripts/manage_local_supabase.sh start
+
+   # Stop Supabase
+   ./scripts/manage_local_supabase.sh stop
+
+   # Check status
+   ./scripts/manage_local_supabase.sh status
+   ```
+
+4. Accessing Local Supabase:
+   - Studio UI: http://localhost:54323
+   - API Endpoint: http://localhost:54321
+   - Database: PostgreSQL running on port 54322
+
+5. Using Local Supabase with the Development Server:
+   ```bash
+   # The development server script will automatically use local Supabase if available
+   ./scripts/start_dev_server.sh
+   ```
+
 ## Running the Server
 
 You can start the development server in two ways:
@@ -87,6 +138,7 @@ This script will automatically:
 - Install/update dependencies
 - Create a default .env file if it doesn't exist
 - Start the development server
+- Check for and use local Supabase if available
 
 ### Manual start
 ```bash
@@ -105,6 +157,26 @@ The server will be available at:
 - `GET /api/v1/me`: Get current user information (requires authentication)
 - More endpoints coming soon...
 
+## Testing
+
+The project uses pytest for testing. To run tests:
+
+```bash
+python -m pytest
+```
+
+### Test Environment
+
+Tests use a separate `.env.test` file with mock Supabase credentials to avoid depending on real services:
+
+```env
+SUPABASE_URL=https://test-supabase-url.com
+SUPABASE_KEY=test-supabase-key
+SUPABASE_JWT_SECRET=test-supabase-jwt-secret
+```
+
+This file should be created automatically when running tests for the first time. If you're getting Supabase validation errors when running tests, make sure this file exists in the project root.
+
 ## Authentication
 
 All API endpoints (except `/api/v1/health`) require authentication using a JWT token from Supabase. To authenticate:
@@ -114,3 +186,16 @@ All API endpoints (except `/api/v1/health`) require authentication using a JWT t
 ```bash
 curl -H "Authorization: Bearer your-jwt-token" http://localhost:8000/api/v1/me
 ```
+
+## User Settings Feature
+
+The application automatically creates a user settings record for each authenticated user:
+
+- When a user signs up, a trigger automatically creates an entry in the `user_settings` table
+- When an existing user logs in, the API middleware checks for and creates a user settings record if one doesn't exist
+- Default user settings include:
+  - `theme`: "light" (default)
+  - `language`: "en" (default)
+  - `timezone`: "UTC" (default)
+
+This feature ensures that every authenticated user always has a corresponding settings record, eliminating the need for separate creation steps after registration.

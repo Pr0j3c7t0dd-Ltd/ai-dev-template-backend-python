@@ -1,0 +1,3 @@
+-- Seed data for user_settings table
+-- Note: In a real application, you would need to create auth.users entries first through Supabase Auth
+-- For local development with seed data, we're assuming these auth.users IDs already exist

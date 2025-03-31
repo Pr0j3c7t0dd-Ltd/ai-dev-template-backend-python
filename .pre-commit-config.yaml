@@ -21,25 +21,8 @@ repos:
       - id: pytest
         name: pytest
         entry: pytest
-        language: python
+        language: system
         pass_filenames: false
         always_run: true
         types: [python]
         verbose: true
-        additional_dependencies:
-          - pytest
-          - pytest-playwright
-          - directory-tree
-          - python-louvain
-          - networkx
-          - tree-sitter
-          - gitpython
-          - tree-sitter-python
-          - tree-sitter-javascript
-          - tree-sitter-c-sharp
-          - setuptools
-          - fastapi
-          - httpx
-          - pydantic
-          - pydantic-settings
-          - python-jose[cryptography]

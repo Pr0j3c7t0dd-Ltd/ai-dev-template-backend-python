@@ -128,11 +128,11 @@ import { getGdsButton, getGdsErrorSummary } from './test-helpers/gds-components'
    test('should submit form with validation', async ({ page }) => {
      // Fill form fields
      await fillGdsField(page, 'Full name', 'John Smith')
-     
+
      // Submit form
      const submitButton = await getGdsButton(page, 'Continue')
      await submitButton.click()
-     
+
      // Check for success banner
      const bannerText = await getGdsBannerText(page)
      await expect(bannerText).toContain('Success')

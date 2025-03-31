@@ -1,6 +1,6 @@
 ---
 description: Any database operations, including migrations, crating and updating tables, adding fields, etc.
-globs: 
+globs:
 alwaysApply: false
 ---
 # Database
