@@ -1,0 +1,4 @@
+- Add tests
+- test with frontend
+- Logging broken
+- add User Settings endpoints
