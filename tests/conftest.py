@@ -1,4 +1,7 @@
 import os
+import shutil
+import subprocess  # noqa: S404
+import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -129,6 +132,15 @@ with (
         }
 
 
+# Define pytest markers
+def pytest_configure(config):
+    """Configure pytest markers."""
+    config.addinivalue_line("markers", "functional: mark a test as a functional test")
+    config.addinivalue_line(
+        "markers", "e2e: mark a test as an end-to-end test using playwright"
+    )
+
+
 @pytest.fixture
 def test_client():
     """Return a TestClient instance."""
@@ -140,4 +152,24 @@ def test_client():
 @pytest.fixture
 def test_token():
     """Return a test JWT token for authenticated endpoints."""
-    return "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0LXVzZXItaWQiLCJlbWFpbCI6InRlc3RAdGVzdC5jb20iLCJyb2xlIjoidXNlciJ9.this_is_a_test_token"
+    return "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0LXVzZXItaWQiLCJlbWFpbCI6InRlc3RAdGVzdC5jb20iLCJyb2xlIjoidXNlciJ9.this_is_a_test_token"  # noqa: S105
+
+
+# Add a pytest command to run playwright tests
+@pytest.mark.e2e
+def test_playwright_e2e():
+    """Run Playwright E2E tests."""
+    print("\n\nRunning Playwright E2E API Tests...")
+    # Use full path to npx if available to avoid S607
+    npx_path = shutil.which("npx")
+    if not npx_path:
+        npx_path = "npx"  # Fall back to PATH resolution as last resort
+    # Using hardcoded arguments - these are not user inputs so S603 is not a concern
+    # but we'll add a noqa comment to be explicit
+    playwright_proc = subprocess.run(  # noqa: S603
+        [npx_path, "playwright", "test"],
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+        check=False,
+    )
+    assert playwright_proc.returncode == 0, "Playwright tests failed"

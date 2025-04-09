@@ -1,3 +1,4 @@
+from src.models import UserSettingsBase
 from src.repositories.base import BaseRepository
 
 
@@ -43,3 +44,48 @@ class UserSettingsRepository(BaseRepository):
             except Exception as inner_e:
                 error_message = f"Failed to ensure user settings: {str(inner_e)}"
                 raise Exception(error_message) from inner_e
+
+    async def get_user_settings(self, user_id: str) -> dict:
+        """
+        Get the user settings for a specific user.
+
+        Args:
+            user_id: The UUID of the user
+
+        Returns:
+            The user settings record
+        """
+        await self.initialize()
+
+        # Ensure the user settings exist
+        await self.ensure_user_settings(user_id)
+
+        # Get the settings
+        result = await self.table.select("*").eq("id", user_id).single().execute()
+        return result.data
+
+    async def update_user_settings(
+        self, user_id: str, settings: UserSettingsBase
+    ) -> dict:
+        """
+        Update the user settings for a specific user.
+
+        Args:
+            user_id: The UUID of the user
+            settings: The settings to update
+
+        Returns:
+            The updated user settings record
+        """
+        await self.initialize()
+
+        # Ensure the user settings exist
+        await self.ensure_user_settings(user_id)
+
+        # Update the settings
+        result = (
+            await self.table.update(settings.model_dump(exclude_unset=True))
+            .eq("id", user_id)
+            .execute()
+        )
+        return result.data[0] if result.data else {}

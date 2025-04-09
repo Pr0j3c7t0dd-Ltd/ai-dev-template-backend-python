@@ -159,10 +159,50 @@ The server will be available at:
 
 ## Testing
 
-The project uses pytest for testing. To run tests:
+This project uses pytest for both functional tests and Playwright for E2E API tests.
+
+### Simple Testing with pytest
+
+You can run tests directly with pytest:
 
 ```bash
-python -m pytest
+# Run all tests
+pytest
+
+# Run tests with verbose output
+pytest -v
+
+# Run specific test files
+pytest tests/functional/test_health.py
+
+# Run tests matching a specific marker (functional or e2e)
+pytest -m functional
+```
+
+### Comprehensive Test Runner
+
+For a more structured test experience, use the test runner script:
+
+```bash
+python -m tests.run_all_tests
+```
+
+This script runs both functional and E2E tests with formatted output.
+
+### Running Only Functional Tests
+
+To run only the functional tests:
+
+```bash
+pytest -v -m functional
+```
+
+### Running Only E2E Tests
+
+To run only the E2E API tests with Playwright:
+
+```bash
+pytest -v -m e2e tests/conftest.py::test_playwright_e2e
 ```
 
 ### Test Environment
@@ -199,3 +239,39 @@ The application automatically creates a user settings record for each authentica
   - `timezone`: "UTC" (default)
 
 This feature ensures that every authenticated user always has a corresponding settings record, eliminating the need for separate creation steps after registration.
+
+## Running Tests
+
+This project uses pytest for both functional tests and to orchestrate E2E API tests with Playwright.
+
+### Running All Tests
+
+To run all tests (both functional and E2E):
+
+```bash
+python -m tests.run_all_tests
+```
+
+### Running Only Functional Tests
+
+To run only the functional tests:
+
+```bash
+python -m pytest -v -m functional tests/functional
+```
+
+### Running Only E2E Tests
+
+To run only the E2E API tests with Playwright:
+
+```bash
+python -m pytest -v -m e2e tests/conftest.py::test_playwright_e2e
+```
+
+### Running Specific Test Files
+
+To run a specific test file:
+
+```bash
+python -m pytest -v tests/functional/test_health.py
+```
