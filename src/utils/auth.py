@@ -1,7 +1,11 @@
 from typing import Optional
 
 from fastapi import Depends, HTTPException, Request
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import (
+    HTTPAuthorizationCredentials,
+    HTTPBearer,
+    OAuth2PasswordBearer,
+)
 from jose import JWTError, jwt
 
 from src.config.settings import Settings
@@ -9,6 +13,10 @@ from src.repositories.user_settings import UserSettingsRepository
 from src.utils.logger import logger
 
 settings = Settings()
+
+# OAuth2PasswordBearer for Swagger UI authentication
+# This is only used for Swagger UI documentation - not for actual authentication
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="", auto_error=False)
 
 
 class JWTBearer(HTTPBearer):
@@ -78,6 +86,41 @@ async def get_current_user(token: str = Depends(JWTBearer())) -> dict:
         user_settings_repo = UserSettingsRepository()
         try:
             # Ensure user settings exist - this calls our database function
+            await user_settings_repo.ensure_user_settings(user_id)
+        except Exception as e:
+            # Log the error but don't block the request
+            print(f"Error ensuring user settings: {str(e)}")
+
+    return payload
+
+
+# For Swagger UI usage - accepts token from various sources
+async def get_current_user_for_swagger(
+    http_bearer_token: str = Depends(JWTBearer(auto_error=False)),
+    oauth2_token: str = Depends(oauth2_scheme),
+) -> dict:
+    """Get current user for Swagger UI.
+
+    This function accepts tokens from multiple sources to support Swagger UI.
+    """
+    token = http_bearer_token or oauth2_token
+    if not token:
+        raise HTTPException(
+            status_code=401,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    payload = decode_jwt(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # Ensure user settings exist
+    user_id = payload.get("sub")
+    if user_id:
+        user_settings_repo = UserSettingsRepository()
+        try:
+            # Ensure user settings exist
             await user_settings_repo.ensure_user_settings(user_id)
         except Exception as e:
             # Log the error but don't block the request

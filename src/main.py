@@ -1,6 +1,8 @@
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 
 from src.api.v1 import router as api_v1_router
@@ -12,7 +14,7 @@ app = FastAPI(
     title="Modern FastAPI Server",
     description="A modern FastAPI server with Swagger documentation",
     version="1.0.0",
-    docs_url="/docs",
+    docs_url=None,  # Disable default docs
     redoc_url="/redoc",
 )
 
@@ -45,6 +47,59 @@ app.add_middleware(
 
 # Include API v1 router
 app.include_router(api_v1_router)
+
+
+# Custom OpenAPI specification with security scheme
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+
+    # Add JWT Bearer security scheme
+    openapi_schema["components"] = openapi_schema.get("components", {})
+    openapi_schema["components"]["securitySchemes"] = {
+        "Bearer": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "Enter your JWT token in the format: Bearer {token}",
+        }
+    }
+
+    # Apply security to all operations except root and health endpoints
+    for path_key, path_item in openapi_schema["paths"].items():
+        # Skip security for root and health endpoints
+        if path_key in ["/", "/api/v1/health"]:
+            continue
+
+        # Apply security to all other endpoints
+        for operation in path_item.values():
+            operation["security"] = operation.get("security", [])
+            operation["security"].append({"Bearer": []})
+
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
+
+
+# Custom Swagger UI route with authentication
+@app.get("/docs", include_in_schema=False)
+async def custom_swagger_ui_html():
+    return get_swagger_ui_html(
+        openapi_url=app.openapi_url,
+        title=f"{app.title} - Swagger UI",
+        oauth2_redirect_url=app.swagger_ui_oauth2_redirect_url,
+        swagger_js_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js",
+        swagger_css_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css",
+    )
 
 
 # Add request middleware for logging
