@@ -21,6 +21,7 @@ from src.models import (
     VerifyTokenResponse,
 )
 from src.services.auth_service import AuthService
+from src.utils.logger import logger
 from src.utils.rate_limiter import limiter
 
 settings = get_settings()
@@ -47,9 +48,33 @@ def apply_rate_limit(func):
 @router.post("/sign-up", response_model=SignUpResponse)
 async def sign_up(request: SignUpRequest, _req: Request) -> SignUpResponse:
     """Register a new user with email and password."""
+    logger.debug(f"Sign-up request received for email: {request.email}")
+
+    # Call auth service
     result = await auth_service.sign_up(request.email, request.password)
+
+    # If signup failed, log additional details and return enhanced error information
     if not result["success"]:
-        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content=result)
+        error_msg = result.get("error", "Unknown error")
+        error_code = result.get("error_code", "unknown_error")
+        details = result.get("details", {})
+
+        logger.error(
+            f"Sign-up failed for {request.email}: {error_msg} (code: {error_code})"
+        )
+
+        # Return all error details to the frontend
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "success": False,
+                "error": error_msg,
+                "error_code": error_code,
+                "details": details,
+            },
+        )
+
+    logger.info(f"Sign-up successful for email: {request.email}")
     return result
 
 

@@ -113,6 +113,8 @@ class SignUpResponse(BaseModel):
     success: bool
     message: Optional[str] = None
     error: Optional[str] = None
+    error_code: Optional[str] = None
+    details: Optional[dict[str, Any]] = None
 
 
 class SignInResponse(BaseModel):

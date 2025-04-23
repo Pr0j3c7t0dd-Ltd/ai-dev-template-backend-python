@@ -27,30 +27,130 @@ class AuthService:
         """Register a new user with email and password."""
         url = f"{self.supabase_url}/auth/v1/signup"
 
+        logger.debug(f"Attempting signup for email: {email}")
+        logger.debug(f"Request URL: {url}")
+
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                # Log the request payload (omitting password)
+                logger.debug(
+                    f"Signup request payload: {{'email': '{email}', 'password': '********'}}"
+                )
+                logger.debug(f"Request headers: {self.headers}")
+
                 response = await client.post(
                     url,
                     json={"email": email, "password": password},
                     headers=self.headers,
                 )
 
+                # Log the response status and headers
+                logger.debug(f"Signup response status: {response.status_code}")
+                logger.debug(f"Signup response headers: {dict(response.headers)}")
+
                 if response.status_code == 200:
+                    logger.info(f"Signup successful for email: {email}")
                     return {
                         "success": True,
                         "message": "Account created successfully. Please check your email to confirm your account.",
                     }
-                error_data = response.json()
-                error_msg = error_data.get("message", "Unknown error during signup")
-                logger.error(f"Signup error: {error_msg}")
-                return {"success": False, "error": error_msg}
 
-        except Exception as e:
-            logger.error(f"Exception during signup: {str(e)}")
+                # Handle error responses with detailed logging
+                try:
+                    error_data = response.json()
+                    error_code = error_data.get("code", "unknown_code")
+                    error_msg = error_data.get("message", "Unknown error during signup")
+                    error_details = error_data.get("details", {})
+
+                    # Extract additional error information
+                    supabase_error_code = error_data.get("error_code")
+                    supabase_msg = error_data.get("msg")
+                    error_id = error_data.get("error_id")
+
+                    # Create more detailed error info
+                    detailed_error = error_msg
+                    if supabase_msg:
+                        detailed_error = supabase_msg
+
+                    # Log all error details
+                    logger.error(
+                        f"Signup error for email {email}: Code: {error_code}, Message: {detailed_error}"
+                    )
+                    logger.error(f"Error details: {error_details}")
+                    logger.error(f"Full error response: {error_data}")
+
+                    # Provide a more specific error message to the user
+                    user_error_msg = self._get_user_friendly_error_message(
+                        supabase_error_code or error_code, detailed_error
+                    )
+
+                    return {
+                        "success": False,
+                        "error": user_error_msg,
+                        "error_code": supabase_error_code or error_code,
+                        "details": {"message": detailed_error, "error_id": error_id},
+                    }
+                except ValueError:
+                    # If JSON parsing fails, log the raw response
+                    raw_response = response.text[:1000]  # Limit to 1000 chars
+                    logger.error(
+                        f"Failed to parse error response. Status: {response.status_code}, Raw response: {raw_response}"
+                    )
+                    return {
+                        "success": False,
+                        "error": f"Unexpected response from authentication service (HTTP {response.status_code})",
+                        "error_code": "parse_error",
+                    }
+
+        except httpx.TimeoutException:
+            logger.error(f"Timeout during signup request for email: {email}")
             return {
                 "success": False,
-                "error": "Service unavailable. Please try again later.",
+                "error": "The authentication service is taking too long to respond. Please try again later.",
+                "error_code": "timeout",
             }
+        except httpx.RequestError as e:
+            logger.error(
+                f"HTTP request error during signup for email {email}: {str(e)}",
+                exc_info=True,
+            )
+            return {
+                "success": False,
+                "error": "Failed to connect to the authentication service. Please check your network connection and try again.",
+                "error_code": "connection_error",
+            }
+        except Exception as e:
+            logger.error(
+                f"Unexpected exception during signup for email {email}: {str(e)}",
+                exc_info=True,
+            )
+            return {
+                "success": False,
+                "error": "An unexpected error occurred. Please try again later.",
+                "error_code": "unexpected_error",
+            }
+
+    def _get_user_friendly_error_message(
+        self, error_code: str, original_message: str
+    ) -> str:
+        """Convert error codes to user-friendly messages."""
+        error_messages = {
+            "user_already_registered": "This email is already registered. Please try signing in or use a different email.",
+            "invalid_email": "The email address format is invalid.",
+            "weak_password": "The password does not meet security requirements.",
+            "email_taken": "This email is already in use. Please try a different one.",
+            "network_error": "Network connection error. Please check your internet connection and try again.",
+            "unexpected_failure": "Our database encountered an error while creating your account. This might be due to a temporary issue or a configuration problem. Please try again later or contact support if the problem persists.",
+            "database_error": "Database error encountered. This could be due to a temporary issue or a configuration problem. Please try again later.",
+            "500": "The server encountered an internal error. Please try again later or contact support if the problem persists.",
+        }
+
+        # Check if original message contains database specific errors
+        if "database error" in original_message.lower():
+            return "Database error encountered. This could be due to a temporary issue or a unique constraint violation. Please try again with a different email address."
+
+        # Return friendly message if available, otherwise return the original message
+        return error_messages.get(error_code, original_message)
 
     async def sign_in(self, email: EmailStr, password: str) -> dict[str, Any]:
         """Authenticate a user with email and password."""
