@@ -55,10 +55,18 @@ async def get_user_settings(request: Request, user=Depends(conditional_auth)):
 
     # Get user settings from repository
     try:
+        # Add debug logging
+        logger.debug("Creating UserSettingsRepository instance")
         repo = UserSettingsRepository()
-        return await repo.get_user_settings(user_id)
+
+        # Log each step
+        logger.debug(f"Calling get_user_settings with user_id: {user_id}")
+        result = repo.get_user_settings(user_id)
+
+        logger.debug(f"Successfully retrieved user settings: {result}")
+        return result
     except Exception as e:
-        logger.error(f"Error fetching user settings: {str(e)}")
+        logger.error(f"Error fetching user settings: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error fetching user settings",
@@ -85,7 +93,7 @@ async def update_user_settings(
     # Update user settings in repository
     try:
         repo = UserSettingsRepository()
-        return await repo.update_user_settings(user_id, settings)
+        return repo.update_user_settings(user_id, settings)
     except Exception as e:
         logger.error(f"Error updating user settings: {str(e)}")
         raise HTTPException(

@@ -1,26 +1,51 @@
+"""
+Base class for repositories.
+"""
+
 from src.database.supabase import get_supabase_client
+from src.utils.logger import logger
 
 
 class BaseRepository:
-    """Base repository class with Supabase client integration."""
+    """
+    Base class for repositories.
+    """
+
+    table_name: str = ""
 
     def __init__(self):
-        self.supabase = None
-        self.table_name: str = ""  # Override in child classes
+        """
+        Initialize a new repository instance.
+        """
+        self._supabase_client = None
+        self.initialize()
 
-    async def initialize(self):
-        """Initialize the Supabase client asynchronously."""
-        if self.supabase is None:
-            self.supabase = await get_supabase_client()
-        return self
+    def initialize(self):
+        """
+        Initialize the repository with a Supabase client.
+        """
+        logger.debug("Initializing Supabase client in BaseRepository")
+        try:
+            self._supabase_client = get_supabase_client()
+            logger.debug("Supabase client initialized successfully")
+        except Exception as e:
+            logger.error(f"Error initializing Supabase client: {str(e)}")
+            error_message = f"Failed to initialize Supabase client: {str(e)}"
+            raise Exception(error_message) from e
 
     @property
     def table(self):
-        """Returns the Supabase table reference."""
+        """
+        Get the table for this repository.
+        """
         if not self.table_name:
-            error_message = "table_name must be set in child class"
+            logger.error("table_name is not set")
+            error_message = "table_name is not set"
             raise ValueError(error_message)
-        if self.supabase is None:
-            error_message = "Supabase client not initialized. Call initialize() first."
+
+        if not self._supabase_client:
+            logger.error("Supabase client is not initialized")
+            error_message = "Supabase client is not initialized"
             raise ValueError(error_message)
-        return self.supabase.table(self.table_name)
+
+        return self._supabase_client.table(self.table_name)

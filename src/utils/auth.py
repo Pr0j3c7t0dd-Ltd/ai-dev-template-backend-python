@@ -86,10 +86,12 @@ async def get_current_user(token: str = Depends(JWTBearer())) -> dict:
         user_settings_repo = UserSettingsRepository()
         try:
             # Ensure user settings exist - this calls our database function
-            await user_settings_repo.ensure_user_settings(user_id)
+            user_settings_repo.ensure_user_settings(user_id)
         except Exception as e:
             # Log the error but don't block the request
-            print(f"Error ensuring user settings: {str(e)}")
+            logger.error(f"Error ensuring user settings: {str(e)}")
+            # Continue without raising an exception - this allows the request to proceed
+            # even if the user settings creation fails
 
     return payload
 
@@ -121,7 +123,7 @@ async def get_current_user_for_swagger(
         user_settings_repo = UserSettingsRepository()
         try:
             # Ensure user settings exist
-            await user_settings_repo.ensure_user_settings(user_id)
+            user_settings_repo.ensure_user_settings(user_id)
         except Exception as e:
             # Log the error but don't block the request
             print(f"Error ensuring user settings: {str(e)}")
