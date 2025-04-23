@@ -12,6 +12,10 @@ PROJECT_ROOT="$SCRIPT_DIR/.."
 # Navigate to project root
 cd "$PROJECT_ROOT"
 
+# Clear the log file
+echo "Clearing log file..."
+rm -f logs/app.log
+
 # Check if virtual environment exists
 if [ ! -d ".venv" ]; then
     echo "Creating virtual environment..."

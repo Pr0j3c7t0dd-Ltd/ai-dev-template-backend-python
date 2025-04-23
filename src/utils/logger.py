@@ -53,6 +53,7 @@ def setup_logger(name: str = "app") -> logging.Logger:
             log_file_path,
             maxBytes=10 * 1024 * 1024,  # 10MB
             backupCount=5,
+            mode="w",  # Use 'w' mode to clear the log file on start
         )
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
