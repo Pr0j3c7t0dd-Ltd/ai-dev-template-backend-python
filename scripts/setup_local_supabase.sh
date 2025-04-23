@@ -63,7 +63,8 @@ LOG_FILE_PATH=logs/app.log
 
 # Local Supabase Settings
 SUPABASE_URL=$(supabase status | grep API | awk '{print $NF}')
-SUPABASE_KEY=$(supabase status | grep anon | awk '{print $NF}')
+SUPABASE_ANON_KEY=$(supabase status | grep anon | awk '{print $NF}')
+SUPABASE_SERVICE_ROLE_KEY=$(supabase status | grep service_role | awk '{print $NF}')
 SUPABASE_JWT_SECRET=$(supabase status | grep JWT | awk '{print $NF}')
 EOF
 

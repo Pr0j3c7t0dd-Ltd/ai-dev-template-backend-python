@@ -16,10 +16,22 @@ class AuthService:
     def __init__(self):
         self.settings = get_settings()
         self.supabase_url = self.settings.SUPABASE_URL
-        self.supabase_key = self.settings.SUPABASE_KEY
+
+        # Use specific key names without fallbacks
+        self.supabase_anon_key = self.settings.SUPABASE_ANON_KEY
+        self.supabase_service_role_key = self.settings.SUPABASE_SERVICE_ROLE_KEY
+
         self.supabase_jwt_secret = self.settings.SUPABASE_JWT_SECRET
+
+        # Use anon key by default for client-facing operations
         self.headers = {
-            "apikey": self.supabase_key,
+            "apikey": self.supabase_anon_key,
+            "Content-Type": "application/json",
+        }
+
+        # Create service role headers for admin operations
+        self.admin_headers = {
+            "apikey": self.supabase_service_role_key,
             "Content-Type": "application/json",
         }
 

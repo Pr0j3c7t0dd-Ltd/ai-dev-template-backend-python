@@ -13,6 +13,8 @@ def get_supabase_client():
     """
     logger.debug("Creating Supabase client")
     settings = get_settings()
-    client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+
+    # Only use SUPABASE_ANON_KEY (no fallback to legacy key)
+    client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
     logger.debug("Supabase client created successfully")
     return client

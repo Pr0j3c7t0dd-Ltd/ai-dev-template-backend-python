@@ -39,7 +39,10 @@ class MockSettings:
 
     # Supabase Settings
     SUPABASE_URL: str = "https://test-supabase-url.com"
-    SUPABASE_KEY: str = "test-supabase-key"
+    SUPABASE_ANON_KEY: str = "test-supabase-anon-key"  # Anon key for public operations
+    SUPABASE_SERVICE_ROLE_KEY: str = (
+        "test-supabase-service-role-key"  # Service role key for admin operations
+    )
     SUPABASE_JWT_SECRET: str = "test-supabase-jwt-secret"  # noqa: S105
 
 

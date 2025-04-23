@@ -25,8 +25,10 @@ async def health_check() -> HealthResponse:
         # This avoids authentication issues and doesn't require specific tables
         async with httpx.AsyncClient() as client:
             url = f"{settings.SUPABASE_URL}/rest/v1/"
+
+            # Only use SUPABASE_ANON_KEY (no fallback to legacy key)
             headers = {
-                "apikey": settings.SUPABASE_KEY,
+                "apikey": settings.SUPABASE_ANON_KEY,
                 "Content-Type": "application/json",
             }
             response = await client.get(url, headers=headers)

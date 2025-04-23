@@ -42,7 +42,8 @@ LOG_FILE_PATH=logs/app.log
 # Supabase Settings (Required)
 # Get these from your Supabase project settings (https://app.supabase.com/project/_/settings/api)
 SUPABASE_URL=your-project-url                   # Project URL
-SUPABASE_KEY=your-anon-key                      # Project API keys -> anon public
+SUPABASE_ANON_KEY=your-anon-key                      # Project API keys -> anon public
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key                      # Project API keys -> service role key
 SUPABASE_JWT_SECRET=your-jwt-secret             # Project API keys -> JWT secret
 ```
 

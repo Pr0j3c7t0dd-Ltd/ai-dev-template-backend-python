@@ -25,7 +25,8 @@ class Settings(BaseSettings):
 
     # Supabase Settings
     SUPABASE_URL: str
-    SUPABASE_KEY: str
+    SUPABASE_ANON_KEY: str  # Anon key for public-facing operations
+    SUPABASE_SERVICE_ROLE_KEY: str  # Service role key for admin operations
     SUPABASE_JWT_SECRET: str
 
     model_config = ConfigDict(case_sensitive=True, env_file=".env")
