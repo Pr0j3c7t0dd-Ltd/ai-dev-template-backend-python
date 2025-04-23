@@ -1,16 +1,20 @@
+import datetime
+
 import httpx
 from fastapi import APIRouter
 
 from src.config.settings import get_settings
+from src.models import HealthResponse
 
 router = APIRouter(prefix="/health", tags=["Health"])
 
 
-@router.get("")
-async def health_check():
+@router.get("", response_model=HealthResponse)
+async def health_check() -> HealthResponse:
     """Health check endpoint."""
     # Initialize database status
     db_status = "connected"
+    services_status = "operational"
 
     # Check database connection directly using the Supabase health endpoint
     try:
@@ -34,5 +38,7 @@ async def health_check():
 
     return {
         "status": "healthy" if db_status == "connected" else "unhealthy",
-        "details": {"database": db_status, "services": "operational"},
+        "details": {"database": db_status, "services": services_status},
+        "timestamp": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
+        "version": "1.0.0",
     }

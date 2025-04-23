@@ -194,7 +194,7 @@ This script runs both functional and E2E tests with formatted output.
 To run only the functional tests:
 
 ```bash
-pytest -v -m functional
+python -m pytest -v -m functional tests/functional
 ```
 
 ### Running Only E2E Tests
@@ -202,7 +202,15 @@ pytest -v -m functional
 To run only the E2E API tests with Playwright:
 
 ```bash
-pytest -v -m e2e tests/conftest.py::test_playwright_e2e
+python -m pytest -v -m e2e tests/conftest.py::test_playwright_e2e
+```
+
+### Running Specific Test Files
+
+To run a specific test file:
+
+```bash
+python -m pytest -v tests/functional/test_health.py
 ```
 
 ### Test Environment

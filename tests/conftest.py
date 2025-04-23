@@ -122,13 +122,18 @@ with (
     # Mock the health check endpoint in tests to ensure it returns healthy
     from src.api.v1.health import router as health_router
     from src.main import app
+    from tests.helpers.mock_auth_service import MockAuthService
 
     @patch.object(health_router.routes[0], "endpoint")
     async def mock_health_check(_):
         """Mock health check endpoint that always returns healthy."""
+        import datetime
+
         return {
             "status": "healthy",
             "details": {"database": "connected", "services": "operational"},
+            "timestamp": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),
+            "version": "1.0.0",
         }
 
 
@@ -136,6 +141,9 @@ with (
 def pytest_configure(config):
     """Configure pytest markers."""
     config.addinivalue_line("markers", "functional: mark a test as a functional test")
+    config.addinivalue_line(
+        "markers", "integration: mark a test as an integration test"
+    )
     config.addinivalue_line(
         "markers", "e2e: mark a test as an end-to-end test using playwright"
     )
@@ -173,3 +181,29 @@ def test_playwright_e2e():
         check=False,
     )
     assert playwright_proc.returncode == 0, "Playwright tests failed"
+
+
+def get_mock_auth_service():
+    """Return a mock auth service for testing."""
+    return MockAuthService()
+
+
+@pytest.fixture
+def client():
+    """Return a test client with patched auth service dependency."""
+    # We'll use the AuthService import from src.api.v1.auth directly
+    from src.api.v1.auth import auth_service
+
+    # Store the original auth_service to restore later
+    original_auth_service = auth_service
+
+    # Replace the auth_service with our mock
+    from src.api.v1 import auth
+
+    auth.auth_service = get_mock_auth_service()
+
+    with TestClient(app) as test_client:
+        yield test_client
+
+    # Restore original auth_service
+    auth.auth_service = original_auth_service

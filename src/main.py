@@ -4,12 +4,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from src.api.v1 import router as api_v1_router
 from src.config.settings import Settings
 from src.utils.logger import logger
+from src.utils.rate_limiter import limiter
 
 settings = Settings()
+
 app = FastAPI(
     title="Modern FastAPI Server",
     description="A modern FastAPI server with Swagger documentation",
@@ -17,6 +22,8 @@ app = FastAPI(
     docs_url=None,  # Disable default docs
     redoc_url="/redoc",
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Log CORS configuration
 logger.info(f"CORS Origins: {settings.CORS_ORIGINS}")
@@ -44,6 +51,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add rate limiting middleware
+app.add_middleware(SlowAPIMiddleware)
 
 # Include API v1 router
 app.include_router(api_v1_router)
@@ -74,8 +84,8 @@ def custom_openapi():
 
     # Apply security to all operations except root and health endpoints
     for path_key, path_item in openapi_schema["paths"].items():
-        # Skip security for root and health endpoints
-        if path_key in ["/", "/api/v1/health"]:
+        # Skip security for root, health, and auth endpoints
+        if path_key in ["/", "/api/v1/health"] or path_key.startswith("/api/v1/auth"):
             continue
 
         # Apply security to all other endpoints
@@ -132,9 +142,34 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     logger.error(
         f"Validation error for {request.method} {request.url.path}: {exc.errors()}"
     )
+
+    # Process the errors to make them serializable
+    errors = []
+    for error in exc.errors():
+        # Create a serializable version of the error
+        serializable_error = {
+            "type": error.get("type"),
+            "loc": error.get("loc"),
+            "msg": error.get("msg"),
+            "input": error.get("input"),
+        }
+
+        # Handle the ctx field which might contain non-serializable objects
+        if "ctx" in error:
+            ctx = error["ctx"]
+            serializable_ctx = {}
+            for key, value in ctx.items():
+                if isinstance(value, ValueError):
+                    serializable_ctx[key] = str(value)
+                else:
+                    serializable_ctx[key] = value
+            serializable_error["ctx"] = serializable_ctx
+
+        errors.append(serializable_error)
+
     return JSONResponse(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        content={"detail": exc.errors()},
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": errors},
     )
 
 

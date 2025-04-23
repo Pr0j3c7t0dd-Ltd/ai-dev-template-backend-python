@@ -2,7 +2,27 @@
 
 from typing import Optional
 
-from pydantic import UUID4, BaseModel
+from pydantic import UUID4, BaseModel, Field
+
+# Import all auth models
+from .auth import (
+    ChangePasswordRequest,
+    ChangePasswordResponse,
+    HealthResponse,
+    RefreshTokenRequest,
+    RefreshTokenResponse,
+    ResetPasswordRequest,
+    ResetPasswordResponse,
+    SessionResponse,
+    SignInRequest,
+    SignInResponse,
+    SignOutResponse,
+    SignUpRequest,
+    SignUpResponse,
+    UserResponse,
+    VerifyTokenRequest,
+    VerifyTokenResponse,
+)
 
 
 class UserSettingsBase(BaseModel):
