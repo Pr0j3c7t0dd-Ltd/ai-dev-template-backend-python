@@ -1,31 +1,179 @@
----
-description: Any database operations, including migrations, crating and updating tables, adding fields, etc.
-globs:
-alwaysApply: false
----
 # Database
 
+## General Guidelines
 - Use supabase for database queries and schema
 - Before performing any database related tasks, make sure to read the database.types.ts first for existing database schema
 - Always use migrations to update the database schema, create them using the command `npx supabase migration new <migration-name>`
-- Afer creating a migration file, run `npx supabase migration up` to apply the migration and run `npx supabase gen types typescript --local > src/types/database.types.ts` to generate the type file
+- After creating a migration file, run `npx supabase migration up` to apply the migration and run `npx supabase gen types typescript --local > src/types/database.types.ts` to generate the type file
 - When creating a new table, it must have columns for `created_at` and `updated_at` and the values should be set automatically via triggers using `public.handle_created_at()` and `public.handle_updated_at()`
 - Always enable Row Level Security (RLS) on newly create tables via `ALTER TABLE <table_name> ENABLE ROW LEVEL SECURITY;` in migration files and add reasonable policies
-- Always use `await createServerClient()` in the `@/utils/supabase/server` to create supabase client in server components and `createBrowserClient()` in the `@/utils/supabase/client` to create supabase client in client components
 - Always maintain backwards compatibility when generating migrations
 
-## Useful supabase commands
+## Project Structure
+```
+src/
+├── database/
+│   └── supabase.py      # Supabase client configuration
+├── repositories/
+│   ├── base.py          # Base repository with Supabase integration
+│   └── <entity>.py      # Entity-specific repositories
+└── config/
+    └── settings.py       # Supabase configuration settings
+```
 
+## Client Configuration
+```python
+# In src/database/supabase.py
+from functools import lru_cache
+from supabase import create_client, Client
+
+@lru_cache()
+def get_supabase_client() -> Client:
+    """Get cached Supabase client instance."""
+    settings = get_settings()
+    return create_client(
+        supabase_url=settings.SUPABASE_URL,
+        supabase_key=settings.SUPABASE_KEY
+    )
+```
+
+## Repository Pattern
+```python
+# In src/repositories/base.py
+class BaseRepository:
+    """Base repository with Supabase integration."""
+    def __init__(self):
+        self.supabase: Client = get_supabase_client()
+        self.table_name: str = ""  # Override in child classes
+
+    @property
+    def table(self):
+        if not self.table_name:
+            raise ValueError("table_name must be set in child class")
+        return self.supabase.table(self.table_name)
+```
+
+## Environment Variables
+Required in .env:
+```
+SUPABASE_URL=your-project-url
+SUPABASE_KEY=your-anon-key
+SUPABASE_JWT_SECRET=your-jwt-secret
+```
+
+## Migration Best Practices
+1. **Naming Convention**: Use descriptive names with timestamp prefix
+   ```sql
+   -- 20240331000000_create_users_table.sql
+   CREATE TABLE users (
+     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     email TEXT UNIQUE NOT NULL,
+     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+   );
+   ```
+
+2. **Automatic Timestamps**: Always add trigger for updated_at
+   ```sql
+   CREATE TRIGGER handle_updated_at BEFORE UPDATE ON users
+   FOR EACH ROW EXECUTE PROCEDURE public.handle_updated_at();
+   ```
+
+3. **RLS Policies**: Always define explicit policies
+   ```sql
+   ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+
+   CREATE POLICY "Users can view own data" ON users
+   FOR SELECT USING (auth.uid() = id);
+   ```
+
+## Common Operations
+
+### Select Operations
+```python
+# Get all records
+result = self.table.select("*").execute()
+
+# Get with filters
+result = self.table.select("*").eq("field", value).execute()
+
+# Get with joins
+result = self.table.select("*, other_table(*)").execute()
+```
+
+### Insert Operations
+```python
+# Single insert
+result = self.table.insert({"field": "value"}).execute()
+
+# Bulk insert
+result = self.table.insert([{"field": "value1"}, {"field": "value2"}]).execute()
+```
+
+### Update Operations
+```python
+# Update records
+result = self.table.update({"field": "new_value"}).eq("id", record_id).execute()
+```
+
+### Delete Operations
+```python
+# Delete records
+result = self.table.delete().eq("id", record_id).execute()
+```
+
+### Transactions
+For transactions, use Postgres functions:
+```sql
+CREATE OR REPLACE FUNCTION process_transaction()
+RETURNS void AS $$
+BEGIN
+    -- Transaction operations here
+    INSERT INTO table1 (field) VALUES ('value');
+    UPDATE table2 SET field = 'value' WHERE id = 'some_id';
+
+    -- Error handling
+    IF FOUND THEN
+        -- Handle success
+    ELSE
+        RAISE EXCEPTION 'Transaction failed';
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+## Error Handling
+```python
+from supabase.lib.client_options import ClientOptions
+from postgrest.exceptions import APIError
+
+try:
+    result = self.table.select("*").execute()
+except APIError as e:
+    logger.error(f"Supabase error: {str(e)}")
+    raise DatabaseError(f"Database operation failed: {str(e)}")
+```
+
+## Useful supabase commands
+```bash
+# Start Supabase locally
 supabase start
 
-supabase migration create <migration_name>
+# Create new migration
+supabase migration new <migration_name>
 
+# Apply migrations
 supabase migration up
 
+# Generate database diff
 supabase db diff -f <migration_name>
 
+# Reset database
 supabase db reset
 
+# Dump data only
 supabase db dump --data-only --local -f seed.sql
 
+# Push to remote
 supabase db push
+```

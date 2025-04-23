@@ -1,0 +1,1640 @@
+---
+description: Testing Standards for FastAPI projects
+globs: test_*.py
+alwaysApply: false
+---
+# Testing Standards for FASTAPI Projects
+
+## Core Principles
+- Test behaviour, not implementation.
+- Prefer integration tests over isolated unit tests. Testing multiple units together in a functional way
+- Mock external dependencies only, at the lowest level (e.g. database operations, API calls, etc).
+- Prioritise clarity and readability.
+- Follow Given-When-Then pattern with inline comments
+
+## Test Cases
+- **Happy Path**: Ensure that valid data produces expected responses and database state.
+- **Error Cases**: Cover invalid input (400), resource not found (404), server errors (500) and dependency failures e.g. database failures
+
+## Best Practices
+- **Organisation**: Group tests by endpoint or operation with clear comment headers (e.g. "# Test Cases - Create").
+- **Naming**: Use descriptive test names (e.g. `test_operation_scenario_expected`).
+- **Fixtures**: Use fixtures for common test data and mocks.
+- **Assertions**: Validate status codes first, then response bodies.
+- **Async Testing**: Use AsyncClient for async endpoints and AsyncMock for async operations.
+- **Look for existing test patterns first**:
+  - Check similar test files for patterns
+  - Review conftest.py for established mocking approaches
+  - Reuse existing test data from test_data.py
+
+## Test File Structure
+Each test file should follow this structure:
+1. File docstring explaining purpose
+2. Imports (stdlib, third-party, local)
+3. Setup fixtures (autouse and specific)
+4. Test cases grouped by operation
+5. Helper functions (if needed)
+
+## Database Mocking Approach
+If the test require MongoDB - reference [03_mongodb_mocking.mdc](mdc:.cursor/rules/03_mongodb_mocking.mdc)
+
+## Background Process Mocking
+When testing endpoints that spawn background processes:
+
+1. Always mock at the service level where the Process is instantiated
+```python
+# CORRECT - Mock where Process is created
+with patch('app.services.standard_set_service.Process'):
+    response = await async_client.post(...)
+
+# INCORRECT - Mock at too high a level
+with patch('multiprocessing.Process'):
+    response = await async_client.post(...)
+```
+
+2. Common pitfalls to avoid:
+   - Don't mock at the global multiprocessing level
+   - Don't let test processes persist after test completion
+   - Remember to mock in all test cases that trigger the service
+
+### Test Data Management
+1. ALL test data should be in test_data.py
+2. Use `create_db_document` for generating test documents
+3. Include all required fields, timestamps, and ObjectId
+4. Provide helper functions for each document type (e.g. `create_classification_test_data`)
+5. Use fixtures for input data validation (e.g. `valid_classification_data`)
+
+## Test Structure Pattern
+Each test should follow this structure:
+```python
+async def test_operation_scenario_expected(
+    async_client,
+    mock_database_setup,
+    mock_collections,
+    test_data_fixtures
+):
+    # Given: Setup context with clear comments
+    collection = mock_collections
+    repo = Repository(collection)
+    service = Service(mock_database_setup, repo)
+    app.dependency_overrides[get_service] = lambda: service
+
+    # When: Action is performed
+    response = await async_client...
+
+    # Then: Verify results
+    assert response.status_code == status.HTTP_XXX_XXX
+    data = response.json()
+    assert ... # Additional assertions
+```
+
+## Tools & Frameworks
+- **pytest** with **pytest-asyncio** for async tests.
+- **pytest-cov** for coverage (minimum 90%).
+- **httpx** AsyncClient for async HTTP testing.
+- FastAPI's **TestClient** for synchronous tests.
+
+## FastAPI Testing Guidelines
+- Configure TestClient/AsyncClient with the correct `base_url` and manage lifespan events.
+- Override dependency providers (not the implementations) and reset overrides between tests.
+- Validate responses against both status codes and Pydantic models.
+- Use proper async/await patterns throughout tests.
+
+## Test Directory Structure
+```bash
+tests/
+├── conftest.py   # Fixtures and configuration
+├── integration/  # Integration tests
+├── unit/        # Unit tests
+└── utils/       # Utility functions and test data
+```
+
+---
+description: LangGraph async programming patterns
+globs: *.py
+alwaysApply: false
+---
+# Async Patterns in LangGraph
+
+## Core Principles
+1. **Async by Default**: Make all graph nodes async functions to enable concurrent execution.
+2. **Proper Awaiting**: Always await async operations and never block the event loop.
+3. **Concurrent Execution**: Use asyncio primitives to run operations concurrently when possible.
+4. **Resource Management**: Properly manage async resources like connection pools.
+5. **Error Handling**: Implement proper error handling for async operations.
+
+## Async Node Implementation
+```python
+import asyncio
+from typing import Dict, Any, List
+
+async def async_node(state: AppState) -> AppState:
+    """Basic async node example."""
+    # Perform an async operation
+    await asyncio.sleep(0.1)  # Simulate an I/O operation
+    return state
+
+async def concurrent_operations_node(state: AppState) -> AppState:
+    """Node that performs multiple operations concurrently."""
+    # Define async operations
+    async def operation1():
+        await asyncio.sleep(0.2)
+        return "Result 1"
+
+    # Run operations concurrently
+    results = await asyncio.gather(
+        operation1(),
+        operation2(),
+        operation3()
+    )
+
+    # Update state with results
+    return state.model_copy(update={"concurrent_results": results})
+```
+
+## Parallel Model Calls
+```python
+async def parallel_reasoning_node(state: AppState) -> AppState:
+    """Performs parallel reasoning with an LLM."""
+    query = state.input.query
+    model_provider = ModelFactory.get_default_provider()
+
+    # Define parallel reasoning tasks
+    async def summarize_query():
+        messages = [
+            ModelMessage(role="system", content="Summarize user queries concisely."),
+            ModelMessage(role="user", content=f"Summarize this query: {query}")
+        ]
+        response = await model_provider.chat(messages)
+        return response.content
+
+    # Run reasoning tasks concurrently
+    summary, entities, category = await asyncio.gather(
+        summarize_query(),
+        identify_entities(),
+        categorize_query()
+    )
+
+    # Update state with reasoning results
+    return state.model_copy(update={
+        "planning": PlanningState(
+            objective=summary,
+            plan=[f"Process {query} as a {category} query"],
+            is_complete=True
+        ),
+        "entities": entities
+    })
+```
+
+## Error Handling
+```python
+async def safe_async_node(state: AppState) -> AppState:
+    """Node with proper async error handling."""
+    try:
+        result = await risky_async_operation(state.input.query)
+        return state.model_copy(update={"result": result})
+    except Exception as e:
+        logging.error(f"Error in async operation: {e}")
+        return state.model_copy(update={
+            "error": str(e),
+            "error_type": type(e).__name__
+        })
+
+async def retry_async_operation(operation, max_retries=3, delay=0.5):
+    """Retry an async operation with exponential backoff."""
+    retries = 0
+    last_exception = None
+
+    while retries <= max_retries:
+        try:
+            return await operation()
+        except Exception as e:
+            last_exception = e
+            retries += 1
+
+            if retries <= max_retries:
+                await asyncio.sleep(delay * (2 ** (retries - 1)))
+            else:
+                break
+
+    raise last_exception
+```
+
+## Async Graph Execution
+```python
+async def run_graph_async(graph: StateGraph, query: str, parameters=None) -> AppState:
+    """Run a graph asynchronously."""
+    initial_state = AppState(
+        input=UserInput(query=query, parameters=parameters or {})
+    )
+    return await graph.ainvoke(initial_state)
+
+async def execute_with_timeout(graph: StateGraph, state: AppState, timeout=30.0) -> AppState:
+    """Execute a graph with a timeout."""
+    try:
+        return await asyncio.wait_for(graph.ainvoke(state), timeout=timeout)
+    except asyncio.TimeoutError:
+        return state.model_copy(update={
+            "error": "Execution timed out",
+            "error_type": "TimeoutError"
+        })
+
+async def process_multiple_queries(graph: StateGraph, queries: List[str]) -> List[AppState]:
+    """Process multiple queries concurrently."""
+    tasks = [graph.ainvoke(AppState(input=UserInput(query=query))) for query in queries]
+    return await asyncio.gather(*tasks)
+```
+
+## Streaming and Monitoring
+```python
+async def stream_graph_execution(graph: StateGraph, query: str) -> AsyncGenerator[AppState, None]:
+    """Stream graph execution, yielding states after each node."""
+    initial_state = AppState(input=UserInput(query=query))
+    streaming_graph = graph.astream()
+
+    async for state in streaming_graph.astream(initial_state):
+        yield state
+
+async def monitor_execution_progress(graph: StateGraph, query: str, progress_callback) -> AppState:
+    """Execute a graph with progress monitoring."""
+    initial_state = AppState(input=UserInput(query=query))
+    streaming_graph = graph.astream()
+
+    visited_nodes = set()
+    total_nodes = len(graph.nodes)
+
+    final_state = None
+    async for state in streaming_graph.astream(initial_state):
+        if hasattr(state, 'current_node'):
+            visited_nodes.add(state.current_node)
+            progress = len(visited_nodes) / total_nodes
+            await progress_callback(progress, state)
+
+        final_state = state
+
+    return final_state
+```
+
+---
+description: langGraph Logging
+globs: *.py
+alwaysApply: false
+---
+## Langgraph Logging
+
+- Log the start and end of node execution
+- Log important state changes and decisions
+- Use consistent logging format
+- Log tool calls and their results
+
+```python
+logger.log_node_start("Node Name")
+logger.log_node_output("Node Name", output, "output_field")
+logger.logger.info("Tool call detected: %s", tool_name)
+logger.logger.info("Tool result: %s", result)
+```
+
+---
+description: LangGraph memory management
+globs: *.py
+alwaysApply: false
+---
+# Memory Management in LangGraph with MongoDB
+
+## Short Term Memory Store using MongoDB Checkpointing
+
+### Overview
+This module provides ephemeral, session-based memory storage for LangGraph using MongoDB as the backend for checkpoints. Checkpoints are designed to capture the state of an ongoing conversation and are meant to be short-lived.
+
+### Requirements & Setup
+- **MongoDB Connection:** A valid MongoDB URI or an initialized MongoClient instance must be provided.
+- **Collection:** Use a dedicated collection (e.g., `langgraph_checkpoints`) for storing checkpoint documents.
+- **TTL Indexing:** Optionally set a TTL index on the checkpoint collection to automatically expire documents after a set period.
+- **Schema:** Each checkpoint document should minimally contain:
+  - A unique checkpoint identifier (`id` or `checkpoint_id`)
+  - A timestamp (`ts`)
+  - The channel values (e.g., conversation messages)
+  - Metadata (e.g., thread or session IDs)
+
+### Operational Rules
+1. **Initialization:**
+   - Use the MongoDB checkpointer interface (e.g., `MongoDBSaver.from_conn_string(MONGODB_URI)` for short-lived scripts or `MongoDBSaver(mongodb_client)` for persistent applications).
+   - Optionally use asynchronous variants (e.g., `AsyncMongoDBSaver.from_conn_string(MONGODB_URI)`).
+
+2. **Saving Checkpoints:**
+   - Generate a unique checkpoint ID (e.g., using UUIDs).
+   - Store all necessary session data under a consistent schema.
+   - Ensure that each checkpoint is associated with a specific session or thread (via a unique thread_id or namespace).
+
+3. **Loading, Updating & Deleting:**
+   - **Load:** Retrieve checkpoint data by providing the session configuration.
+   - **Update:** Check for existence, then update checkpoint data atomically. Use update operations to modify fields as necessary.
+   - **Delete:** Remove checkpoints using a safe delete operation and handle missing checkpoints gracefully.
+
+4. **Session Isolation:**
+   - Ensure checkpoints are isolated by session (e.g., using a thread_id in the configuration) to prevent state leakage.
+
+## Long Term Memory Storage using MongoDB
+
+### Overview
+This module handles persistent storage for LangGraph where memory needs to persist across sessions. The implementation relies on updating existing MongoDB collections rather than ephemeral checkpointing.
+
+### Requirements & Setup
+- **Persistent Connection:** Use a MongoClient or AsyncMongoClient for a long-lived connection.
+- **Dedicated Collection:** Use a separate collection (e.g., `langgraph_longterm`) to store persistent memory documents.
+- **Schema & Indexing:**
+  - Documents should have a defined schema with identifiers (e.g., `memory_id`), timestamps, and memory content.
+  - Create indexes on frequently queried fields (e.g., `memory_id`, `session_id`) to enhance performance.
+- **Write Strategies:** Utilize upsert operations (i.e., `update_one` with `upsert=True`) for atomic insert/update operations.
+
+### Operational Rules
+1. **Initialization:**
+   - Connect to the desired MongoDB instance and select the persistent memory collection.
+   - Load configuration options (collection name, write concerns, etc.) from environment variables or configuration files.
+
+2. **Insert/Update Operations:**
+   - Use upsert operations to either insert new memory or update existing documents.
+   - Ensure that concurrent updates are handled gracefully by using appropriate write concerns or transactions if necessary.
+
+3. **Retrieval & Deletion:**
+   - Retrieve documents by unique identifiers, session IDs, or other criteria as defined by the application logic.
+   - Allow deletion of long term memory documents with proper error handling and confirmation of removal.
+
+4. **Data Integrity & Performance:**
+   - Maintain schema consistency across all documents.
+   - Use compound indexes when needed for multi-field queries.
+   - Consider transaction mechanisms for multi-document operations to ensure data integrity.
+
+## General Guidelines for Code Generation
+- **Consistent Naming & Error Handling:** Follow consistent naming conventions and robust error handling patterns.
+- **Asynchronous Support:** Where applicable, use asynchronous methods to avoid blocking operations.
+- **Configuration Flexibility:** Allow configuration through environment variables or configuration files to set parameters like TTL, collection names, and connection strings.
+- **Clear Separation:** Keep the short term and long term memory modules logically separated while using similar design principles to ensure integration with LangGraph projects.
+- **Documentation:** Include inline comments and documentation to facilitate maintenance and future updates.
+
+---
+description: Model Integration in LangGraph
+globs: *.py
+alwaysApply: false
+---
+# Model Integration in LangGraph
+
+## General Principles
+
+- Always use LangChain interfaces for LLM calls, not native APIs
+- Maintain consistent model configuration across the application
+- Use structured output parsers for predictable responses
+
+## LLM Integration
+
+### Model Initialization
+
+- Use LangChain's model wrappers instead of direct API calls
+- Configure models with consistent parameters
+- Store API keys securely using environment variables
+
+```python
+# ✅ DO: Use LangChain wrappers
+from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
+
+# Initialize Claude model
+claude_model = ChatAnthropic(
+    model="claude-3-5-haiku-20241022",
+    anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"),
+    temperature=0,
+)
+
+# Initialize OpenAI model
+openai_model = ChatOpenAI(
+    model="gpt-4o",
+    openai_api_key=os.environ.get("OPENAI_API_KEY"),
+    temperature=0,
+)
+
+# ❌ DON'T: Use native APIs directly
+# import anthropic
+# client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+# response = client.messages.create(...)
+```
+
+### Structured Output
+
+- Use LangChain's output parsers for structured responses
+- Define Pydantic models for expected outputs
+- Use JSON mode when available for more reliable parsing
+
+```python
+from langchain_core.output_parsers import JsonOutputParser
+from pydantic import BaseModel, Field
+
+# Define the expected output structure
+class MathSolution(BaseModel):
+    steps: list[str] = Field(description="Step-by-step solution process")
+    answer: str = Field(description="Final answer to the problem")
+    confidence: float = Field(description="Confidence score between 0 and 1")
+
+# Create a parser
+parser = JsonOutputParser(pydantic_object=MathSolution)
+
+# Bind the parser to the model
+structured_model = model.with_structured_output(MathSolution)
+```
+
+### Prompt Templates
+
+- Use LangChain's prompt templates for consistent prompting
+- Define reusable templates at the module level
+- Include clear instructions and examples
+
+```python
+from langchain_core.prompts import ChatPromptTemplate
+
+template = """You are a math problem solver.
+
+Problem: {problem}
+
+Solve this step by step and provide your final answer.
+"""
+
+prompt = ChatPromptTemplate.from_template(template)
+
+# Chain the prompt and model
+chain = prompt | model | parser
+```
+
+### Tool Integration
+
+- Use LangChain's Tool class for defining tools
+- Bind tools to models using LangChain's methods
+- Provide clear descriptions and examples for each tool
+
+```python
+from langchain_core.tools import Tool
+
+calculator_tool = Tool.from_function(
+    func=calculate,
+    name="calculator",
+    description="Useful for performing arithmetic calculations",
+    args_schema=CalculatorInput,
+)
+
+# Bind tools to the model
+model_with_tools = model.bind_tools([calculator_tool])
+```
+
+### Streaming
+
+- Use LangChain's streaming capabilities for real-time responses
+- Implement proper handlers for streaming events
+- Handle streaming errors gracefully
+
+```python
+from langchain_core.callbacks import StreamingStdOutCallbackHandler
+
+# Set up streaming
+callbacks = [StreamingStdOutCallbackHandler()]
+
+# Use streaming in chain
+response = chain.invoke({"problem": user_query}, callbacks=callbacks)
+```
+
+### Caching
+
+- Implement LangChain's caching mechanisms to reduce API calls
+- Configure appropriate TTL for cached responses
+- Use Redis or SQLite for persistent caching
+
+```python
+from langchain_community.cache import RedisCache
+from langchain_core.globals import set_llm_cache
+
+# Set up Redis cache
+set_llm_cache(RedisCache(redis_url="redis://localhost:6379"))
+```
+
+## Error Handling
+
+- Implement proper error handling for LLM calls
+- Provide fallback mechanisms for API failures
+- Log detailed error information
+
+```python
+try:
+    response = chain.invoke({"problem": user_query})
+except Exception as e:
+    logger.error(f"Error in LLM call: {e}")
+    # Implement fallback mechanism
+    response = fallback_response(user_query)
+```
+
+## Testing
+
+- Create mock LLMs for testing using LangChain's FakeListLLM
+- Test edge cases and error scenarios
+- Validate output structures match expectations
+
+```python
+from langchain_core.language_models.fake import FakeListLLM
+
+# Create a fake LLM for testing
+fake_llm = FakeListLLM(responses=["fake response 1", "fake response 2"])
+
+# Test chain with fake LLM
+test_chain = prompt | fake_llm | parser
+result = test_chain.invoke({"problem": "test problem"})
+```
+
+---
+description: LangGraph Nodes & Edges
+globs: *.py
+alwaysApply: false
+---
+# LangGraph Nodes & Edges
+
+## Node Implementation
+
+- Define nodes as functions that take and return state
+- Use clear docstrings explaining the node's purpose
+- Log node execution and outputs
+- Return complete state (including unchanged fields)
+
+```python
+def example_node(state: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Process input and update state.
+
+    Args:
+        state: The current graph state
+
+    Returns:
+        Updated state
+    """
+    logger.log_node_start("Node Name")
+
+    # Process input and generate output
+    result = process_input(state)
+
+    logger.log_node_output("Node Name", result, "result_field")
+
+    # Return complete updated state
+    return {
+        "field1": result,
+        "field2": state.get("field2", []),
+        "field3": state.get("field3", False)
+    }
+```
+
+## Edge Implementation
+
+- Use LangGraph's prebuilt conditions when possible
+- Create wrapper functions for custom logging or behavior if necessary
+- Return values should match LangGraph conventions (`"tools"`, `"__end__"`)
+
+### Configuring Conditional Edges
+
+```python
+# Add conditional edges
+graph.add_conditional_edges(
+    "agent",
+    tools_condition_with_logging,
+    {
+        "tools": "tools",  # Route to tools node when tools are called
+        "__end__": END,    # End the graph when no tools are called
+    },
+)
+```
+
+### Graph Definition
+
+- Create graphs using the `StateGraph` class
+- Always include START and END nodes from LangGraph
+- Define nodes, edges, and conditional edges explicitly
+- Set a clear entry point
+- Use descriptive names for nodes and edge conditions
+
+```python
+from langgraph.graph import START, END, StateGraph
+
+def create_graph() -> StateGraph:
+    """Create the graph with nodes and edges."""
+    # Create the graph with state type
+    graph = StateGraph(GraphState)
+
+    # Add nodes
+    graph.add_node("node_name", node_function)
+    graph.add_node("process_data", process_data_node)
+
+    # Add edges starting from START
+    graph.add_edge(START, "node_name")
+    graph.add_edge("node_name", "process_data")
+
+    # Add conditional edges that may lead to END
+    graph.add_conditional_edges(
+        "process_data",
+        condition_function,
+        {
+            "continue": "next_node",
+            "__end__": END,  # Use END for terminal states
+        },
+    )
+
+    # Set entry point (first node after START)
+    graph.set_entry_point("node_name")
+
+    return graph
+```
+
+---
+description: LangGraph Project Structure
+globs: *.py
+alwaysApply: false
+---
+# LangGraph Project Structure
+
+## Directory Structure
+
+```python
+my_langgraph_app/
+├── pyproject.toml
+├── .env
+├── README.md
+├── src/
+│   ├── __init__.py
+│   ├── main.py              # Main application entry point
+│   ├── config.py            # Configuration management
+│   ├── api/                 # API endpoints
+│   │   ├── __init__.py
+│   │   └── v1/              # API v1 routes
+│   ├── models/              # Data models
+│   │   ├── __init__.py
+│   ├── services/            # Business logic
+│   │   ├── __init__.py
+│   ├── repositories/        # Data access
+│   │   ├── __init__.py
+│   ├── database/            # Database operations
+│   │   ├── __init__.py
+│   ├── agents/              # LangGraph AI agents
+│   │   ├── __init__.py
+│   │   ├── states/          # State definitions
+│   │   │   ├── __init__.py
+│   │   │   ├── input_state.py   # Input state schemas
+│   │   │   ├── internal_state.py # Internal state schemas
+│   │   │   └── output_state.py  # Output state schemas
+│   │   ├── nodes/           # Graph node definitions
+│   │   │   ├── __init__.py
+│   │   │   ├── reasoning.py     # Reasoning nodes
+│   │   │   ├── tools.py         # Tool calling nodes
+│   │   │   └── rag.py           # RAG implementation nodes
+│   │   ├── subgraphs/       # Subgraph definitions
+│   │   │   ├── __init__.py
+│   │   │   ├── planning.py      # Planning subgraph
+│   │   │   └── execution.py     # Execution subgraph
+│   │   ├── tools/           # Custom tools
+│   │   │   ├── __init__.py
+│   │   │   └── custom_tools.py  # Custom tool implementations
+│   │   └── memory/          # Memory implementations
+│   │       ├── __init__.py
+│   │       ├── short_term.py    # Checkpoint-based short-term memory
+│   │       └── long_term.py     # Long-term memory
+│   └── utils/               # Utility functions
+│       ├── __init__.py
+│       └── helpers.py       # Helper utilities
+└── tests/                   # Test directory
+    ├── __init__.py
+    └── conftest.py          # Test fixtures
+```
+
+---
+description: LangGraph State Management
+globs: *.py
+alwaysApply: false
+---
+# LangGraph State Management
+
+## State Design Principles
+
+1. **Separation of Concerns**: Divide state into input, internal, and output components.
+2. **Immutability**: Treat state as immutable by returning new state objects rather than modifying existing ones.
+3. **Type Safety**: Use Pydantic models for all state definitions.
+4. **Clear Ownership**: Each node should own specific parts of the state.
+
+- Use Pydantic models for structured state management
+- Define clear state interfaces between nodes
+- Extend `MessagesState` for conversation-based agents
+
+```python
+class GraphState(BaseModel):
+    """Type definition for the graph state."""
+
+    field1: str
+    field2: list
+    field3: bool
+```
+
+For conversation-based agents, extend `MessagesState`:
+
+```python
+from langgraph.graph.message import MessagesState
+
+class AgentState(MessagesState):
+    """State for the agent with message history."""
+    pass
+```
+
+---
+description: *.py
+globs:
+alwaysApply: false
+---
+# LangGraph Tool Use and ReAct Pattern
+
+## Core Principles
+
+1. **Tool Definition**: Define tools using LangChain's `@tool` decorator
+2. **Type Safety**: Use Pydantic models for tool inputs and outputs
+3. **ReAct Integration**: Use LangGraph's prebuilt ReAct agent for tool orchestration
+4. **State Management**: Maintain consistent state handling across tool executions
+5. **Error Handling**: Implement robust error handling for tool failures
+
+## Tool Implementation
+
+### Tool Definition
+```python
+from langchain_core.tools import tool
+from pydantic import BaseModel, Field
+
+class WeatherInput(BaseModel):
+    """Input schema for weather tool."""
+    city: str = Field(..., description="The city to get weather for")
+
+@tool
+def get_weather(city: str) -> str:
+    """
+    Get the weather for a given city.
+
+    Args:
+        city: Name of the city to get weather for
+
+    Returns:
+        Current weather conditions for the city
+    """
+    return f"The weather in {city} is sunny."
+```
+
+### Tool Collections
+```python
+# Group related tools into collections
+weather_tools = [get_weather]
+database_tools = [query_db, update_db]
+file_tools = [read_file, write_file]
+
+# Create combined tool sets as needed
+all_tools = [*weather_tools, *database_tools, *file_tools]
+```
+
+## ReAct Agent Setup
+
+### Model Configuration
+```python
+from langchain_anthropic import ChatAnthropic
+from langgraph.prebuilt import create_react_agent
+
+# Create the system message
+system_message = """You are a helpful AI assistant that can use tools.
+When a task requires external information or actions, use the appropriate tool.
+Always think step by step about which tool to use."""
+
+# Initialize the model with system message
+model = ChatAnthropic(
+    model="claude-3-5-haiku-20241022",
+    temperature=0
+).bind(system_message=system_message)
+
+# Create the agent with tools bound to the model
+model_with_tools = model.bind_tools(tools)
+agent = create_react_agent(model_with_tools, tools)
+```
+
+## Node Implementation
+
+### Tool-Using Node
+```python
+async def tool_node(state: GraphState) -> GraphState:
+    """
+    Node that uses tools via a ReAct agent.
+
+    Args:
+        state: The current state of the workflow
+
+    Returns:
+        Updated state with tool execution results
+    """
+    # Create the message for the agent
+    message = HumanMessage(content=state.current_task)
+
+    # Use the agent to execute tools
+    response = await agent.ainvoke({"messages": [message]})
+
+    # Extract the final response
+    final_message = next(
+        (msg for msg in reversed(response["messages"]) if isinstance(msg, AIMessage)),
+        None,
+    )
+
+    if not final_message:
+        return state.model_copy(update={"error": "No response from agent"})
+
+    # Update state with results
+    return state.model_copy(update={
+        "tool_results": response.get("tool_results", []),
+        "response": final_message.content,
+        "status": ExecutionStatus.COMPLETED
+    })
+```
+
+## Error Handling
+
+### Tool Error Management
+```python
+@tool
+def safe_tool_execution(func: Callable, *args, **kwargs) -> Dict[str, Any]:
+    """Wrapper for safe tool execution with error handling."""
+    try:
+        result = func(*args, **kwargs)
+        return {
+            "success": True,
+            "result": result,
+            "error": None
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "result": None,
+            "error": str(e)
+        }
+```
+
+## State Management
+
+### Tool State Interface
+```python
+class ToolState(BaseModel):
+    """State interface for tool-using nodes."""
+    current_task: str = Field(..., description="Current task to execute")
+    tool_results: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Results from tool executions"
+    )
+    error: Optional[str] = Field(
+        default=None,
+        description="Error message if tool execution failed"
+    )
+    status: ExecutionStatus = Field(
+        default=ExecutionStatus.PENDING,
+        description="Current execution status"
+    )
+```
+
+## Best Practices
+
+1. **Tool Granularity**
+   - Keep tools focused on single responsibilities
+   - Use clear, descriptive names and documentation
+   - Implement input validation using Pydantic models
+
+2. **ReAct Pattern Usage**
+   - Use the ReAct pattern for complex tool orchestration
+   - Provide clear system messages for agent behavior
+   - Implement proper error handling and recovery
+
+3. **State Management**
+   - Use immutable state updates with `model_copy`
+   - Include all necessary state fields in updates
+   - Maintain type safety throughout tool execution
+
+4. **Logging and Monitoring**
+   - Log tool executions and results
+   - Track tool usage metrics
+   - Monitor for tool failures and performance issues
+
+---
+description: Type Safety in LangGraph
+globs: *.py
+alwaysApply: false
+---
+# Type Safety in LangGraph
+
+## Type Safety Principles
+
+1. **Use Pydantic Models**: Define all states, inputs, and outputs as Pydantic models.
+2. **Type Annotations**: Use Python's type annotations for all functions and variables.
+3. **Validation**: Leverage Pydantic's validation to catch errors early.
+4. **Clear Documentation**: Include descriptive field descriptions in all models.
+
+## Pydantic Models for Type Safety
+
+```python
+from pydantic import BaseModel, Field, validator, root_validator
+from typing import List, Dict, Optional, Any, Union, Literal
+from datetime import datetime
+from uuid import UUID, uuid4
+
+# Base models with common functionality
+class BaseState(BaseModel):
+    """Base class for all state models."""
+    id: UUID = Field(default_factory=uuid4, description="Unique identifier for this state")
+    created_at: datetime = Field(default_factory=datetime.now, description="When this state was created")
+
+    class Config:
+        validate_assignment = True  # Validate when attributes are assigned
+        extra = "forbid"  # Forbid extra attributes not defined in the model
+
+# Complex nested models
+class Document(BaseModel):
+    """Represents a document retrieved from a knowledge base."""
+    id: str = Field(..., description="Unique identifier for the document")
+    content: str = Field(..., description="Text content of the document")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Document metadata")
+    score: float = Field(default=0.0, description="Relevance score")
+
+    @validator('score')
+    def validate_score(cls, v):
+        """Ensure score is between 0 and 1."""
+        if not 0 <= v <= 1:
+            raise ValueError("Score must be between 0 and 1")
+        return v
+
+class ToolCall(BaseModel):
+    """Represents a tool call."""
+    tool_name: str = Field(..., description="Name of the tool to call")
+    tool_args: Dict[str, Any] = Field(..., description="Arguments for the tool")
+    call_id: str = Field(default_factory=lambda: str(uuid4()), description="Unique ID for this call")
+
+    @root_validator
+    def validate_tool_call(cls, values):
+        """Ensure the tool call is valid."""
+        tool_name = values.get("tool_name")
+        tool_args = values.get("tool_args")
+
+        # Example validation - this would be more complex in practice
+        if tool_name == "search" and "query" not in tool_args:
+            raise ValueError("Search tool requires a 'query' argument")
+
+        return values
+
+class ToolResult(BaseModel):
+    """Represents the result of a tool call."""
+    call_id: str = Field(..., description="ID of the original tool call")
+    success: bool = Field(..., description="Whether the tool call succeeded")
+    result: Any = Field(..., description="Result of the tool call")
+    error: Optional[str] = Field(default=None, description="Error message if the call failed")
+
+# Union types for more complex states
+class MessageContent(BaseModel):
+    """Represents different types of message content."""
+    type: Literal["text", "image", "file"] = Field(..., description="Type of content")
+    content: Union[str, bytes, Dict[str, Any]] = Field(..., description="Content data")
+
+    @validator('content')
+    def validate_content_type(cls, v, values):
+        """Ensure content matches the specified type."""
+        content_type = values.get('type')
+        if content_type == "text" and not isinstance(v, str):
+            raise ValueError("Text content must be a string")
+        elif content_type == "image" and not isinstance(v, (bytes, str)):
+            raise ValueError("Image content must be bytes or a URL string")
+        return v
+
+# Enums for better type safety
+from enum import Enum, auto
+
+class NodeType(str, Enum):
+    """Types of nodes in the graph."""
+    REASONING = "reasoning"
+    RETRIEVAL = "retrieval"
+    TOOL_CALLING = "tool_calling"
+    RESPONSE = "response"
+
+class ExecutionStatus(str, Enum):
+    """Possible status values for execution."""
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+```
+
+## Type-Safe Functions in Nodes
+
+```python
+from typing import Tuple, Callable, TypeVar, Generic, cast
+
+# Type variables for generic functions
+T = TypeVar('T')
+S = TypeVar('S')
+
+# Type-safe node functions
+async def retrieve_documents(query: str, top_k: int = 3) -> List[Document]:
+    """
+    Retrieve documents based on a query.
+
+    Args:
+        query: The search query
+        top_k: Number of documents to retrieve
+
+    Returns:
+        List of retrieved documents
+    """
+    # Implementation would use a vector store in practice
+    docs = [
+        Document(
+            id=f"doc{i}",
+            content=f"Content for document {i}",
+            metadata={"source": f"source{i}"},
+            score=0.9 - (i * 0.1)
+        )
+        for i in range(top_k)
+    ]
+    return docs
+
+# Generic state update function
+def update_state_field(state: T, field: str, value: Any) -> T:
+    """
+    Update a field in a Pydantic model state.
+
+    Args:
+        state: The state to update
+        field: The field name to update
+        value: The new value
+
+    Returns:
+        Updated state
+    """
+    # Using model_copy (previously known as copy) is the preferred
+    # way to create an immutable update in Pydantic v2
+    return state.model_copy(update={field: value})
+
+# Type-safe node function with proper typing
+async def process_rag_node(state: "RAGState") -> "RAGState":
+    """
+    Process RAG node with type safety.
+
+    Args:
+        state: The current RAG state
+
+    Returns:
+        Updated RAG state
+    """
+    # Retrieve documents
+    docs = await retrieve_documents(state.query, top_k=5)
+
+    # Process documents to create context
+    context = "\n\n".join([f"Document {i+1}: {doc.content}" for i, doc in enumerate(docs)])
+
+    # Return updated state
+    return update_state_field(
+        update_state_field(state, "retrieved_documents", [doc.model_dump() for doc in docs]),
+        "processed_context",
+        context
+    )
+```
+
+## Type-Safe Graph Construction
+
+```python
+from langgraph.graph import StateGraph
+from typing import Annotated, Literal, get_type_hints
+
+# Define a typed state for the graph
+class GraphState(BaseModel):
+    """State for the graph execution."""
+    query: str = Field(..., description="User query")
+    documents: List[Document] = Field(default_factory=list, description="Retrieved documents")
+    tool_calls: List[ToolCall] = Field(default_factory=list, description="Tool calls to make")
+    tool_results: List[ToolResult] = Field(default_factory=list, description="Results of tool calls")
+    response: Optional[str] = Field(default=None, description="Response to user")
+    status: ExecutionStatus = Field(default=ExecutionStatus.PENDING, description="Current status")
+
+# Type-safe conditional router
+def route_after_retrieval(state: GraphState) -> Literal["tool_calling", "response"]:
+    """
+    Route to the next node after retrieval.
+
+    Args:
+        state: The current graph state
+
+    Returns:
+        Name of the next node
+    """
+    # If we need to make tool calls, go to tool_calling
+    if "tool" in state.query.lower():
+        return "tool_calling"
+    # Otherwise, go directly to response
+    return "response"
+
+# Type-safe graph construction
+def create_typed_graph() -> StateGraph:
+    """
+    Create a graph with proper typing.
+
+    Returns:
+        A compiled state graph
+    """
+    # Create the graph
+    graph = StateGraph(GraphState)
+
+    # Add nodes
+    graph.add_node("retrieval", process_rag_node)
+    graph.add_node("tool_calling", process_tool_calling)
+    graph.add_node("response", generate_response)
+
+    # Add edges
+    graph.add_conditional_edges(
+        "retrieval",
+        route_after_retrieval
+    )
+    graph.add_edge("tool_calling", "response")
+
+    # Set entry point
+    graph.set_entry_point("retrieval")
+
+    # Compile
+    return graph.compile()
+
+# Type-safe execution
+async def execute_graph(query: str) -> GraphState:
+    """
+    Execute the graph with a user query.
+
+    Args:
+        query: The user's query
+
+    Returns:
+        Final graph state
+    """
+    # Create the graph
+    graph = create_typed_graph()
+
+    # Create initial state
+    initial_state = GraphState(query=query)
+
+    # Execute the graph
+    final_state = await graph.ainvoke(initial_state)
+
+    return final_state
+```
+
+## Type-Safe Config and Settings
+
+```python
+from pydantic_settings import BaseSettings
+from typing import Union, List, Optional
+
+class ModelConfig(BaseModel):
+    """Configuration for a language model."""
+    provider: Literal["anthropic", "ollama"] = Field(..., description="Model provider")
+    model_name: str = Field(..., description="Name of the model")
+    api_key: Optional[str] = Field(default=None, description="API key (if needed)")
+    base_url: Optional[str] = Field(default=None, description="Base URL (if needed)")
+    temperature: float = Field(default=0.7, description="Temperature for generation")
+    max_tokens: int = Field(default=1000, description="Maximum tokens to generate")
+
+    @validator('temperature')
+    def validate_temperature(cls, v):
+        """Ensure temperature is between 0 and 1."""
+        if not 0 <= v <= 1:
+            raise ValueError("Temperature must be between 0 and 1")
+        return v
+
+class DatabaseConfig(BaseModel):
+    """Configuration for the database."""
+    host: str = Field(..., description="Database host")
+    port: int = Field(..., description="Database port")
+    username: str = Field(..., description="Database username")
+    password: str = Field(..., description="Database password")
+    database: str = Field(..., description="Database name")
+
+    @property
+    def connection_string(self) -> str:
+        """Get the database connection string."""
+        return f"postgresql://{self.username}:{self.password}@{self.host}:{self.port}/{self.database}"
+
+class AppConfig(BaseSettings):
+    """Application configuration."""
+    app_name: str = Field("LangGraph App", description="Name of the application")
+    debug: bool = Field(False, description="Whether to enable debug mode")
+    model: ModelConfig = Field(..., description="Model configuration")
+    database: DatabaseConfig = Field(..., description="Database configuration")
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field("INFO", description="Log level")
+
+    class Config:
+        env_file = ".env"
+        env_nested_delimiter = "__"
+```
+
+---
+description: Playwright Testing
+globs: tests/*.js
+---
+ # Playwright Testing Standards
+
+This document outlines the standards and patterns for Playwright testing in our application.
+
+## Test File Structure
+
+- Test files should be placed in the `/tests` directory
+- Use `.spec.js` extension for test files
+- Group related tests using `test.describe()`
+- Use descriptive test names that explain the behavior being tested
+- Add comments to explain each step
+
+## Common Patterns
+
+```javascript
+import { test, expect } from '@playwright/test'
+import { navigateToHome, getGdsComponentText } from './test-helpers/index.js'
+
+test.describe('Feature Name', () => {
+  test.beforeEach(async ({ page }) => {
+    // Setup code here
+    await navigateToHome(page)
+  })
+
+  test('should [expected behavior]', async ({ page }) => {
+  })
+})
+```
+
+## Best Practices
+
+1. **Page Navigation**
+   - Use helper functions like `navigateToHome()` for common navigation
+   - Wait for critical elements using `page.waitForSelector()`
+
+2. **Selectors**
+   - Prefer role-based selectors: `page.getByRole('button', { name: 'Submit' })`
+   - Use GOV.UK Frontend class selectors when testing GDS components
+   - Store reusable selectors in test helpers
+
+3. **Assertions**
+   - Use clear, specific assertions
+   - Verify visibility: `await expect(element).toBeVisible()`
+   - Check content: `await expect(element).toContainText('expected text')`
+   - Validate page titles: `await expect(page).toHaveTitle(/Title Pattern/)`
+
+4. **Test Helpers**
+   - Create reusable helper functions for common operations
+   - Document helper functions with JSDoc comments
+   - Keep helpers focused and single-purpose
+
+## Configuration
+
+```javascript
+// playwright.config.js
+{
+  testDir: './tests',
+  fullyParallel: true,
+  retries: process.env.CI ? 2 : 0,
+  use: {
+    baseURL: 'http://localhost:3000',
+    trace: 'on-first-retry',
+    screenshot: 'only-on-failure'
+  }
+}
+```
+
+## Error Handling
+
+- Use try-catch blocks for expected errors
+- Add meaningful error messages
+- Take screenshots on test failures
+
+## Debugging
+
+- Use `await page.pause()` for debugging
+- Enable trace viewer with `trace: 'on-first-retry'`
+- Use HTML reporter for detailed test results
+
+## GDS Component Testing
+
+### Helper Functions
+
+Any time a GDS Component is used add it to the `gds-components` helper
+
+For example:
+
+```javascript
+import { getGdsButton, getGdsErrorSummary } from './test-helpers/gds-components'
+```
+
+1. **Button Interactions**
+   - Use `getGdsButton()` to locate GDS buttons by text
+   ```javascript
+   const submitButton = await getGdsButton(page, 'Continue')
+   await submitButton.click()
+   ```
+
+3. **Error Handling**
+   - Use `getGdsErrorSummary()` to check for validation errors
+   ```javascript
+   const errorSummary = await getGdsErrorSummary(page)
+   await expect(errorSummary).toBeVisible()
+   ```
+
+### Best Practices for GDS Testing
+
+1. **Component Visibility**
+   - Always check if GDS components are visible before interacting
+   - Use appropriate waiting strategies for dynamic content
+
+2. **Error States**
+   - Test both valid and invalid form submissions
+   - Verify error message content matches GDS patterns
+   - Check error summary links navigate to correct fields
+
+3. **Accessibility**
+   - Test keyboard navigation through GDS components
+   - Verify ARIA attributes are present and correct
+   - Check focus management follows GDS patterns
+
+4. **Common Patterns**
+   ```javascript
+   test('should submit form with validation', async ({ page }) => {
+     // Fill form fields
+     await fillGdsField(page, 'Full name', 'John Smith')
+
+     // Submit form
+     const submitButton = await getGdsButton(page, 'Continue')
+     await submitButton.click()
+
+     // Check for success banner
+     const bannerText = await getGdsBannerText(page)
+     await expect(bannerText).toContain('Success')
+   })
+   ```
+
+---
+description: Code Style for Python Projects
+globs: *.py
+alwaysApply: false
+---
+# Code Style for Python Projects
+
+## Base Standards
+- Follow PEP 8 conventions
+- Use Ruff for linting and formatting
+- Use Pyright for type checking
+
+### Formatting
+- Indent: 4 spaces
+- Line Length: 88 chars
+- Use double quotes for strings
+- Docstring: Google style
+
+## Linting Rules
+Ruff is configured as per @ruff.yml
+
+## Naming Conventions
+- Use `snake_case` for functions, variables, and modules
+- Use `PascalCase` for classes
+- Use `UPPER_CASE` for constants
+
+## Import Order
+Imports are automatically sorted by Ruff using isort rules:
+1. Standard library imports
+2. Third-party imports (fastapi, pydantic, motor, pytest)
+3. Local application imports
+
+## Function Guidelines
+- Maximum function length: 50 lines
+- Maximum nesting depth: 3 levels
+- Single responsibility principle
+- Clear return types
+
+## Automatic Formatting
+- Format code on save with Ruff
+- Fix linting issues automatically when possible
+- Use VS Code with Ruff extension for best experience
+
+---
+description: Python Project Overview
+globs: *.*
+alwaysApply: false
+---
+# Python Project Overview
+
+## Stack
+- Python
+- FastAPI
+- LangGraph
+- LangChain
+
+## Directory Structure
+```
+src/
+├── api/v1/      # Routing and HTTP endpoints
+├── services/    # Business logic
+├── repositories/# Data access
+├── agents/      # LangGraph AI agents
+├── utils/       # Utility functions
+├── config/      # Configuration
+├── database/    # Database operations
+└── models/      # Data models
+```
+
+## Key Principles
+- Security-first approach
+- Clean code practices
+- Async by default
+
+## Git Commits
+- Use conventional commit prefixes (feat:, fix:, etc.)
+- Keep messages concise and reference issues
+
+## Security
+- No secrets in code
+- Validate inputs
+- Encrypt sensitive data
+
+## Python Libary Versions
+- DO NOT pin old versions of python libraries when doing `pip install`, always search the web for the latest version or do not add a version when installing
+
+# Database
+
+## General Guidelines
+- Use supabase for database queries and schema
+- Before performing any database related tasks, make sure to read the database.types.ts first for existing database schema
+- Always use migrations to update the database schema, create them using the command `npx supabase migration new <migration-name>`
+- After creating a migration file, run `npx supabase migration up` to apply the migration and run `npx supabase gen types typescript --local > src/types/database.types.ts` to generate the type file
+- When creating a new table, it must have columns for `created_at` and `updated_at` and the values should be set automatically via triggers using `public.handle_created_at()` and `public.handle_updated_at()`
+- Always enable Row Level Security (RLS) on newly create tables via `ALTER TABLE <table_name> ENABLE ROW LEVEL SECURITY;` in migration files and add reasonable policies
+- Always maintain backwards compatibility when generating migrations
+
+## Project Structure
+```
+src/
+├── database/
+│   └── supabase.py      # Supabase client configuration
+├── repositories/
+│   ├── base.py          # Base repository with Supabase integration
+│   └── <entity>.py      # Entity-specific repositories
+└── config/
+    └── settings.py       # Supabase configuration settings
+```
+
+## Client Configuration
+```python
+# In src/database/supabase.py
+from functools import lru_cache
+from supabase import create_client, Client
+
+@lru_cache()
+def get_supabase_client() -> Client:
+    """Get cached Supabase client instance."""
+    settings = get_settings()
+    return create_client(
+        supabase_url=settings.SUPABASE_URL,
+        supabase_key=settings.SUPABASE_KEY
+    )
+```
+
+## Repository Pattern
+```python
+# In src/repositories/base.py
+class BaseRepository:
+    """Base repository with Supabase integration."""
+    def __init__(self):
+        self.supabase: Client = get_supabase_client()
+        self.table_name: str = ""  # Override in child classes
+
+    @property
+    def table(self):
+        if not self.table_name:
+            raise ValueError("table_name must be set in child class")
+        return self.supabase.table(self.table_name)
+```
+
+## Environment Variables
+Required in .env:
+```
+SUPABASE_URL=your-project-url
+SUPABASE_KEY=your-anon-key
+SUPABASE_JWT_SECRET=your-jwt-secret
+```
+
+## Migration Best Practices
+1. **Naming Convention**: Use descriptive names with timestamp prefix
+   ```sql
+   -- 20240331000000_create_users_table.sql
+   CREATE TABLE users (
+     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+     email TEXT UNIQUE NOT NULL,
+     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+   );
+   ```
+
+2. **Automatic Timestamps**: Always add trigger for updated_at
+   ```sql
+   CREATE TRIGGER handle_updated_at BEFORE UPDATE ON users
+   FOR EACH ROW EXECUTE PROCEDURE public.handle_updated_at();
+   ```
+
+3. **RLS Policies**: Always define explicit policies
+   ```sql
+   ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+
+   CREATE POLICY "Users can view own data" ON users
+   FOR SELECT USING (auth.uid() = id);
+   ```
+
+## Common Operations
+
+### Select Operations
+```python
+# Get all records
+result = self.table.select("*").execute()
+
+# Get with filters
+result = self.table.select("*").eq("field", value).execute()
+
+# Get with joins
+result = self.table.select("*, other_table(*)").execute()
+```
+
+### Insert Operations
+```python
+# Single insert
+result = self.table.insert({"field": "value"}).execute()
+
+# Bulk insert
+result = self.table.insert([{"field": "value1"}, {"field": "value2"}]).execute()
+```
+
+### Update Operations
+```python
+# Update records
+result = self.table.update({"field": "new_value"}).eq("id", record_id).execute()
+```
+
+### Delete Operations
+```python
+# Delete records
+result = self.table.delete().eq("id", record_id).execute()
+```
+
+### Transactions
+For transactions, use Postgres functions:
+```sql
+CREATE OR REPLACE FUNCTION process_transaction()
+RETURNS void AS $$
+BEGIN
+    -- Transaction operations here
+    INSERT INTO table1 (field) VALUES ('value');
+    UPDATE table2 SET field = 'value' WHERE id = 'some_id';
+
+    -- Error handling
+    IF FOUND THEN
+        -- Handle success
+    ELSE
+        RAISE EXCEPTION 'Transaction failed';
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+## Error Handling
+```python
+from supabase.lib.client_options import ClientOptions
+from postgrest.exceptions import APIError
+
+try:
+    result = self.table.select("*").execute()
+except APIError as e:
+    logger.error(f"Supabase error: {str(e)}")
+    raise DatabaseError(f"Database operation failed: {str(e)}")
+```
+
+## Useful supabase commands
+```bash
+# Start Supabase locally
+supabase start
+
+# Create new migration
+supabase migration new <migration_name>
+
+# Apply migrations
+supabase migration up
+
+# Generate database diff
+supabase db diff -f <migration_name>
+
+# Reset database
+supabase db reset
+
+# Dump data only
+supabase db dump --data-only --local -f seed.sql
+
+# Push to remote
+supabase db push
+```
