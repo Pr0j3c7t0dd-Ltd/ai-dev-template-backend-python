@@ -1,5 +1,6 @@
 """Data models for the application."""
 
+from datetime import datetime
 from typing import Optional
 
 from pydantic import UUID4, BaseModel, Field
@@ -33,3 +34,5 @@ class UserSettingsBase(BaseModel):
 
 class UserSettings(UserSettingsBase):
     id: UUID4
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None

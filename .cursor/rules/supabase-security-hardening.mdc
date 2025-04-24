@@ -1,0 +1,126 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+Rule Name: supabase-security-hardening
+Description: Supabase Database Security & Hardening Patterns
+
+# Supabase Database Security & Hardening
+
+This rule collects practical patterns and anti-patterns for building a secure Supabase Postgres schema. Apply these guidelines to every migration and review.
+
+## Core Principles
+
+1. **RLS First** – enable Row Level Security on every table that touches user data.
+2. **Never Bypass RLS** – functions, policies and application code must respect RLS at all times.
+3. **Defence in Depth** – grant the minimum privileges each role needs; revoke everything else.
+4. **Auditable Migrations** – always comment _why_ a policy/function exists in the migration file.
+5. **No Secrets in Frontend** – never expose `service_role` or any admin key client-side.
+
+---
+
+## Recommended Patterns
+
+### 1. Enable RLS immediately
+```sql
+CREATE TABLE public.profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  full_name TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+```
+
+### 2. Owner-only policies
+```sql
+CREATE POLICY "Users can manage their own profile"
+  ON public.profiles
+  FOR ALL
+  TO authenticated
+  USING ( auth.uid() = id )
+  WITH CHECK ( auth.uid() = id );
+```
+
+### 3. Admin role with FOR ALL USING (true)
+Create a dedicated role (not `service_role`) for server-side admin tasks.
+```sql
+CREATE ROLE app_admin NOINHERIT;
+GRANT app_admin TO postgres; -- server connection user
+
+CREATE POLICY "Admin full access"
+  ON public.profiles
+  FOR ALL
+  TO app_admin
+  USING (true);
+```
+
+### 4. Harden SECURITY DEFINER functions
+```sql
+CREATE OR REPLACE FUNCTION public.safe_example()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp -- lock search_path!
+AS $$
+BEGIN
+  -- secure logic here
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.safe_example() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.safe_example() TO authenticated;
+```
+
+* Always add `SET search_path = public, pg_temp` to prevent _search-path spoofing_.
+* Revoke execute from PUBLIC and grant only specific roles.
+
+### 5. Privilege hygiene after table creation
+```sql
+-- start restrictive
+REVOKE ALL ON TABLE public.profiles FROM PUBLIC;
+
+-- grant explicit rights
+GRANT SELECT, INSERT, UPDATE ON public.profiles TO authenticated;
+GRANT ALL ON public.profiles TO app_admin;
+```
+
+### 6. Avoid enumeration helpers
+If you need to check a user exists, restrict to self or admin roles:
+```sql
+IF user_id_param <> auth.uid()
+   AND current_user NOT IN ('app_admin', 'service_role') THEN
+  RAISE EXCEPTION 'Permission denied';
+END IF;
+```
+
+---
+
+## Forbidden Patterns (🚫)
+
+| Anti-pattern | Why it's bad |
+|--------------|-------------|
+| `ALTER TABLE ... DISABLE ROW LEVEL SECURITY;` | Temporarily drops all protections; accidents happen. |
+| `GRANT ALL ON TABLE ... TO authenticated;` | Grants DELETE when not intended. |
+| `SECURITY DEFINER` without `search_path` | Attackers can hijack the path. |
+| Using `service_role` key in client-side code | Effectively turns RLS off for end users. |
+| Returning default data on RLS errors | Hides security bugs and leaks information. |
+
+---
+
+## Migration Checklist ✅
+
+1. Every new table: `ENABLE RLS` before inserting rows.
+2. At least one SELECT/INSERT/UPDATE policy for `authenticated` role.
+3. Admin policies documented with a clear comment.
+4. Functions: `SECURITY DEFINER SET search_path = public, pg_temp` + explicit GRANTs.
+5. Run `supabase db lint` locally; ensure no BYPASSRLS roles appear in output.
+
+---
+
+## References
+• Supabase Docs – RLS & Security Best Practices
+• OWASP Top-10 – Injection, Broken Access Control
+• Postgres Docs – `search_path`, Row Level Security
+
+Follow these patterns to keep your Supabase database secure by default.

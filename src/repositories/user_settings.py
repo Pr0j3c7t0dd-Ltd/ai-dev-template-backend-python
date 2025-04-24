@@ -1,111 +1,163 @@
-from src.models import UserSettingsBase
+from typing import Optional
+
+from src.models import UserSettings, UserSettingsBase
 from src.repositories.base import BaseRepository
 from src.utils.logger import logger
 
 
 class UserSettingsRepository(BaseRepository):
-    """Repository for interacting with user_settings table."""
+    """Repository for User Settings."""
 
-    def __init__(self):
+    def __init__(self, auth_token: Optional[str] = None):
+        """Initialize the UserSettings repository with an optional auth token."""
         self.table_name = "user_settings"
-        super().__init__()
+        super().__init__(auth_token=auth_token)
 
-    def ensure_user_settings(self, user_id: str) -> dict:
+    def get_user_settings(self, user_id: str) -> UserSettings:
         """
-        Ensures that a user_settings record exists for the given user ID.
-        If it doesn't exist, creates one with default values.
+        Get user settings for a user.
+
+        This method first ensures the user settings exist by calling the
+        ensure_user_settings RPC, then fetches the settings from the database.
 
         Args:
-            user_id: The UUID of the user
+            user_id: The user's ID
 
         Returns:
-            The user settings record
+            UserSettings object with the user's settings
+
+        Raises:
+            Exception: If there's an error retrieving the settings
         """
         try:
-            # Check if the user settings already exist
-            logger.debug(f"Checking if user settings exist for user_id: {user_id}")
-            existing = self.table.select("*").eq("id", user_id).execute()
+            # First ensure settings exist for this user
+            logger.debug(f"Ensuring user settings exist for user_id: {user_id}")
+            self._ensure_user_settings(user_id)
 
-            # Log the result
-            logger.debug(
-                f"Existing user settings query result: {existing.__dict__ if hasattr(existing, '__dict__') else existing}"
+            # Then fetch the settings
+            logger.debug(f"Fetching settings for user_id: {user_id}")
+            result = self.table.select("*").eq("id", user_id).execute()
+
+            if not result.data:
+                logger.warning(f"No settings found for user_id: {user_id}")
+                error_msg = f"Settings not found for user: {user_id}"
+                raise ValueError(error_msg)
+
+            # Convert to model
+            settings_data = result.data[0]
+            logger.debug(f"Retrieved settings: {settings_data}")
+
+            return UserSettings(
+                id=settings_data["id"],
+                theme=settings_data["theme"],
+                language=settings_data["language"],
+                timezone=settings_data["timezone"],
+                created_at=settings_data["created_at"],
+                updated_at=settings_data["updated_at"],
             )
 
-            if hasattr(existing, "data") and existing.data:
-                logger.debug(f"Found existing settings: {existing.data}")
-                return existing.data[0]
-
-            # Create default user settings - this is better than calling an RPC function
-            logger.debug(
-                f"No settings found, creating default settings for user_id: {user_id}"
-            )
-            result = self.table.insert({"id": user_id}).execute()
-
-            # Log the result
-            logger.debug(
-                f"Insert result: {result.__dict__ if hasattr(result, '__dict__') else result}"
-            )
-
-            if hasattr(result, "data") and result.data:
-                logger.debug(f"Successfully created user settings: {result.data[0]}")
-                return result.data[0]
-            logger.warning("No data returned from insert operation")
-            return {}
         except Exception as e:
-            logger.error(f"Failed to ensure user settings: {str(e)}", exc_info=True)
-            error_message = f"Failed to ensure user settings: {str(e)}"
-            raise Exception(error_message) from e
+            logger.error(f"Error getting user settings: {str(e)}")
+            raise
 
-    def get_user_settings(self, user_id: str) -> dict:
+    def update_user_settings(
+        self, user_id: str, settings: UserSettingsBase
+    ) -> UserSettings:
         """
-        Get the user settings for a specific user.
+        Update user settings for a user.
+
+        This method first ensures the user settings exist by calling the
+        ensure_user_settings RPC, then updates the settings in the database.
 
         Args:
-            user_id: The UUID of the user
+            user_id: The user's ID
+            settings: UserSettingsBase object with the new settings
 
         Returns:
-            The user settings record
-        """
-        # Ensure the user settings exist
-        logger.debug(f"Ensuring user settings exist for user_id: {user_id}")
-        self.ensure_user_settings(user_id)
+            UserSettings object with the updated settings
 
-        # Get the settings
-        logger.debug(f"Fetching user settings for user_id: {user_id}")
+        Raises:
+            Exception: If there's an error updating the settings
+        """
         try:
-            result = self.table.select("*").eq("id", user_id).single().execute()
+            # First ensure settings exist for this user
+            logger.debug(f"Ensuring user settings exist for user_id: {user_id}")
+            self._ensure_user_settings(user_id)
+
+            # Then update the settings
             logger.debug(
-                f"User settings query result: {result.__dict__ if hasattr(result, '__dict__') else result}"
+                f"Updating settings for user_id: {user_id} with data: {settings.model_dump()}"
+            )
+            result = (
+                self.table.update(settings.model_dump()).eq("id", user_id).execute()
             )
 
-            if hasattr(result, "data"):
-                logger.debug(f"User settings data: {result.data}")
-                return result.data
-            logger.warning("No data returned from select operation")
-            return {}
-        except Exception as e:
-            logger.error(f"Error fetching user settings: {str(e)}", exc_info=True)
-            error_message = f"Error fetching user settings: {str(e)}"
-            raise Exception(error_message) from e
+            if not result.data:
+                logger.warning(f"No settings updated for user_id: {user_id}")
+                error_msg = f"Settings not found for user: {user_id}"
+                raise ValueError(error_msg)
 
-    def update_user_settings(self, user_id: str, settings: UserSettingsBase) -> dict:
+            # Convert to model
+            settings_data = result.data[0]
+            logger.debug(f"Updated settings: {settings_data}")
+
+            return UserSettings(
+                id=settings_data["id"],
+                theme=settings_data["theme"],
+                language=settings_data["language"],
+                timezone=settings_data["timezone"],
+                created_at=settings_data["created_at"],
+                updated_at=settings_data["updated_at"],
+            )
+
+        except Exception as e:
+            logger.error(f"Error updating user settings: {str(e)}")
+            raise
+
+    def _ensure_user_settings(self, user_id: str) -> dict:
         """
-        Update the user settings for a specific user.
+        Ensure user settings exist by calling the ensure_user_settings RPC.
 
         Args:
-            user_id: The UUID of the user
-            settings: The settings to update
+            user_id: The user's ID
 
         Returns:
-            The updated user settings record
-        """
-        # Ensure the user settings exist
-        self.ensure_user_settings(user_id)
+            dict with the RPC response
 
-        # Update the settings
-        result = (
-            self.table.update(settings.model_dump(exclude_unset=True))
-            .eq("id", user_id)
-            .execute()
-        )
-        return result.data[0] if result.data else {}
+        Raises:
+            Exception: If there's an error calling the RPC
+        """
+        try:
+            logger.debug(f"Calling ensure_user_settings RPC for user_id: {user_id}")
+
+            # First, check if the user exists in auth.users table
+            # Use the rpc method instead of direct table access to handle schema correctly
+            user_check = self._supabase_client.rpc(
+                "check_user_exists", {"user_id_param": user_id}
+            ).execute()
+
+            if not user_check.data or not user_check.data.get("exists", False):
+                logger.error(
+                    f"Cannot ensure settings: User with ID {user_id} does not exist in auth.users table"
+                )
+                error_msg = f"User with ID {user_id} does not exist. Valid user account required."
+                raise ValueError(error_msg)
+
+            # If user exists, proceed with ensuring settings
+            response = self._supabase_client.rpc("ensure_user_settings").execute()
+
+            if not response.data:
+                logger.warning("No response data from ensure_user_settings RPC")
+                error_msg = "Failed to ensure user settings"
+                raise ValueError(error_msg)
+
+            logger.debug(f"ensure_user_settings RPC response: {response.data}")
+            return response.data
+
+        except ValueError as e:
+            # Re-raise ValueError for known issues like missing user
+            logger.error(f"Error ensuring user settings: {str(e)}")
+            raise
+        except Exception as e:
+            logger.error(f"Error ensuring user settings: {str(e)}")
+            raise

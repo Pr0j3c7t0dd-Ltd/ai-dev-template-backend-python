@@ -14,7 +14,6 @@ def mock_settings():
     settings = MagicMock(spec=Settings)
     settings.SUPABASE_URL = "https://test-url.supabase.co"
     settings.SUPABASE_ANON_KEY = "test-anon-key"
-    settings.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key"
     settings.SUPABASE_JWT_SECRET = "test-jwt-secret"  # noqa: S105
     return settings
 
@@ -53,11 +52,4 @@ def test_auth_service_uses_correct_keys(mock_get_settings, mock_settings):
 
     # Assert
     assert auth_service.supabase_anon_key == mock_settings.SUPABASE_ANON_KEY
-    assert (
-        auth_service.supabase_service_role_key
-        == mock_settings.SUPABASE_SERVICE_ROLE_KEY
-    )
     assert auth_service.headers["apikey"] == mock_settings.SUPABASE_ANON_KEY
-    assert (
-        auth_service.admin_headers["apikey"] == mock_settings.SUPABASE_SERVICE_ROLE_KEY
-    )

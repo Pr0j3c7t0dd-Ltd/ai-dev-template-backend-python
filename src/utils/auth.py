@@ -9,6 +9,7 @@ from fastapi.security import (
 from jose import JWTError, jwt
 
 from src.config.settings import Settings
+from src.database.supabase import get_supabase_client
 from src.repositories.user_settings import UserSettingsRepository
 from src.utils.logger import logger
 
@@ -83,15 +84,34 @@ async def get_current_user(token: str = Depends(JWTBearer())) -> dict:
     # Ensure user settings exist
     user_id = payload.get("sub")
     if user_id:
-        user_settings_repo = UserSettingsRepository()
+        user_settings_repo = UserSettingsRepository(auth_token=token)
         try:
-            # Ensure user settings exist - this calls our database function
-            user_settings_repo.ensure_user_settings(user_id)
+            # First verify the user actually exists in the database before proceeding
+            supabase_client = get_supabase_client(auth_token=token)
+            user_check = supabase_client.rpc(
+                "check_user_exists", {"user_id_param": user_id}
+            ).execute()
+
+            if not user_check.data or not user_check.data.get("exists", False):
+                logger.error(
+                    f"JWT token contains user ID {user_id} that does not exist in auth.users table"
+                )
+                # Don't raise an exception here to allow the request to continue
+                # The specific endpoints will handle authorization appropriately
+            else:
+                # User exists, try to ensure settings
+                try:
+                    # Ensure user settings exist - this calls our database function
+                    user_settings_repo._ensure_user_settings(user_id)
+                except Exception as settings_error:
+                    # Log the error but don't block the request
+                    logger.error(f"Error ensuring user settings: {str(settings_error)}")
+                    # Continue without raising an exception - this allows the request to proceed
+                    # even if the user settings creation fails
         except Exception as e:
             # Log the error but don't block the request
-            logger.error(f"Error ensuring user settings: {str(e)}")
+            logger.error(f"Error checking user or ensuring user settings: {str(e)}")
             # Continue without raising an exception - this allows the request to proceed
-            # even if the user settings creation fails
 
     return payload
 
@@ -120,13 +140,13 @@ async def get_current_user_for_swagger(
     # Ensure user settings exist
     user_id = payload.get("sub")
     if user_id:
-        user_settings_repo = UserSettingsRepository()
+        user_settings_repo = UserSettingsRepository(auth_token=token)
         try:
             # Ensure user settings exist
-            user_settings_repo.ensure_user_settings(user_id)
+            user_settings_repo._ensure_user_settings(user_id)
         except Exception as e:
             # Log the error but don't block the request
-            print(f"Error ensuring user settings: {str(e)}")
+            logger.error(f"Error ensuring user settings: {str(e)}")
 
     return payload
 

@@ -13,11 +13,15 @@ class BaseRepository:
 
     table_name: str = ""
 
-    def __init__(self):
+    def __init__(self, auth_token: str = None):
         """
         Initialize a new repository instance.
+
+        Args:
+            auth_token: Optional JWT token for authenticated requests
         """
         self._supabase_client = None
+        self._auth_token = auth_token
         self.initialize()
 
     def initialize(self):
@@ -26,7 +30,7 @@ class BaseRepository:
         """
         logger.debug("Initializing Supabase client in BaseRepository")
         try:
-            self._supabase_client = get_supabase_client()
+            self._supabase_client = get_supabase_client(self._auth_token)
             logger.debug("Supabase client initialized successfully")
         except Exception as e:
             logger.error(f"Error initializing Supabase client: {str(e)}")

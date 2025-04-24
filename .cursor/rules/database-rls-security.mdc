@@ -1,0 +1,140 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+# Database Security and RLS Guidelines
+
+## Core Principles
+
+1. **Never Bypass RLS**: Row-Level Security policies must always be enforced in all database operations.
+2. **No Temporary Solutions**: Never implement "temporary" workarounds for RLS or security issues.
+3. **Proper Error Handling**: Database operations must properly raise and handle exceptions, not silently fail or provide default values.
+4. **Secure Migration Design**: Database migrations must maintain security constraints at all times.
+5. **Complete RLS Coverage**: All tables with sensitive data must have RLS policies defined.
+
+## Database Migration Guidelines
+
+### General Rules
+
+- **All or Nothing**: Migrations must not leave the database in a partially secure state
+- **Backwards Compatibility**: Ensure migrations don't break existing RLS policies
+- **Test Before Deploy**: Verify all RLS policies work as expected in a test environment
+- **Document Policies**: Add comments in migrations explaining RLS policy reasoning
+- **Avoid service_role**: Never use service_role in application code to bypass RLS
+
+### Migration Example Patterns
+
+#### Adding Tables with RLS
+
+```sql
+-- Create table
+CREATE TABLE public.user_data (
+  id UUID REFERENCES auth.users(id) PRIMARY KEY,
+  data JSONB NOT NULL
+);
+
+-- Enable RLS
+ALTER TABLE public.user_data ENABLE ROW LEVEL SECURITY;
+
+-- Create policies (before any data is added)
+CREATE POLICY "Users can view their own data"
+  ON public.user_data
+  FOR SELECT
+  TO authenticated
+  USING (auth.uid()::text = id::text);
+
+CREATE POLICY "Users can update their own data"
+  ON public.user_data
+  FOR UPDATE
+  TO authenticated
+  USING (auth.uid()::text = id::text);
+```
+
+#### Fixing Broken RLS
+
+```sql
+-- DO NOT temporarily disable RLS while fixing
+-- INSTEAD, create new policies before dropping old ones
+
+-- Add new fixed policy
+CREATE POLICY "Users can view their own data (fixed)"
+  ON public.user_data
+  FOR SELECT
+  TO authenticated
+  USING (auth.uid()::text = id::text);
+
+-- Drop old broken policy (only after new one is confirmed working)
+DROP POLICY IF EXISTS "Users can view their own data (old)"
+  ON public.user_data;
+```
+
+### Forbidden Patterns
+
+#### Never temporarily disable RLS
+
+```sql
+-- ❌ NEVER DO THIS:
+ALTER TABLE public.user_data DISABLE ROW LEVEL SECURITY;
+-- Do some operations
+ALTER TABLE public.user_data ENABLE ROW LEVEL SECURITY;
+```
+
+#### Never use service role in application code
+
+```python
+# ❌ NEVER DO THIS:
+def get_user_data(user_id):
+    # Using service role to bypass RLS
+    result = supabase.table("user_data").select("*").execute()
+    return [item for item in result.data if item["user_id"] == user_id]
+```
+
+#### Never create grace periods for RLS
+
+```sql
+-- ❌ NEVER DO THIS:
+CREATE POLICY "Temporary admin access to all data"
+  ON public.user_data
+  FOR ALL
+  TO authenticated
+  USING (auth.uid()::text IN (SELECT id::text FROM public.administrators) OR current_date < '2023-10-01');
+```
+
+## Error Handling in Repository Code
+
+### Proper Pattern
+
+```python
+def get_user_record(user_id: str) -> dict:
+    """Get a user record with proper error handling."""
+    try:
+        result = self.table.select("*").eq("id", user_id).execute()
+        if not result.data:
+            raise ValueError(f"No record found for user ID: {user_id}")
+        return result.data[0]
+    except Exception as e:
+        logger.error(f"Database error: {str(e)}")
+        raise  # Re-raise the exception for the caller to handle
+```
+
+### Forbidden Pattern
+
+```python
+# ❌ NEVER DO THIS:
+def get_user_record(user_id: str) -> dict:
+    """This bypasses RLS by returning default data on error."""
+    try:
+        result = self.table.select("*").eq("id", user_id).execute()
+        if result.data:
+            return result.data[0]
+    except Exception as e:
+        logger.error(f"Error: {str(e)}")
+
+    # Don't return default values to bypass RLS errors
+    return {
+        "id": user_id,
+        "name": "Default User",
+        "email": "unknown"
+    }
+```
