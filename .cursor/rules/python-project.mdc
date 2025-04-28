@@ -29,10 +29,6 @@ src/
 - Clean code practices
 - Async by default
 
-## Git Commits
-- Use conventional commit prefixes (feat:, fix:, etc.)
-- Keep messages concise and reference issues
-
 ## Security
 - No secrets in code
 - Validate inputs
